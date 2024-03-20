@@ -1,7 +1,36 @@
-// 9 Jan 2024 ver. 0.05 : flag for reaching NegLimit was added. Program sends a UDP message when NegLimit is reached.
+// 11 Jan 2024 ver. 0.06 : Homing on Z-axis implemented
+// Homing logic. Home is the leftmost position without activating NegLimit sensor. We go left (negative direction) until we hit NegLimit sensor. Next we go right (positive direction) one small step at a time until NegLimit sensor becomes not active. Done when reached the leftmost position with NO active NegLimit sensor. Home position is reached.  
+// On Z-axis, "Home" position is with the carriage in the upmost position.
 
-// 20 Dec 2023   ver. 0.03 : UDP-based, can move 2 motors for the same distance
-// This is an attempt to make a receiver of two coordinates (X and Z) through UDP
+/*
+Homing (Z-axis)
+// input 2 cases: 1. NegSensor is active, 2. NegSensor isn't active
+Flag = 0
+if NegLimit == 1 // 2 cases: Flag or NO_Flag
+  if NO_Flag: 
+    Flag = 1 // we just starting going positive direction
+  else (if Flag)
+    one step in positive direction // we're starting or continuing to go positiv
+
+else // NegLimit == 0 // cases: Flag or NO_Flag
+  if Flag:
+    we are done, Flag = 0
+  else // NO_Flag, 
+    // we need to move negative direction
+    go 1 step i negative direction  // Question if one step is enough?
+     
+
+// alt
+if ( (NegLimit == 1) && (NegRchdFlag == 0) ) {
+    NegRchdFlag = 1
+    go one step right
+} else {
+    go one step left
+}
+*/
+
+// ver. 0.05 - flag for reaching NegLimit was added. Program sends a UDP message when NegLimit is reached.
+// 20 Dec 2023   ver. 0.03 : UDP-based, can move 2 motors. Implemented a receiver of two coordinates (X and Z) through UDP.
 
 // To control two motors, please, send a UDP packet to 192.168.0.121, port 8888.
 // in Linux can use netcat: "nc -u 192.168.0.121 8888"
@@ -62,12 +91,20 @@ bool usingDhcp = false;
 // Define the velocity and acceleration limits to be used for each move
 // speed of 10000 is too high for Z-axis motor (Z-axis motor takes up to 5000 pulses per sec) 
 int velocityLimit = 3000; // pulses per sec, 5000 is max for vertical Z-axis
+////int Homing_velocityLimit = 500;
 int accelerationLimit = 100000; // pulses per sec^2
+
+// 20 -> 18mm distance after homing
+int homing_step = 10; // Size of a step for Homing function. Was 10, was 5. 
 
 int X_NegLimitFlag = 0;  // flag = 1 while NegLimit sensor is reached
 int X_PosLimitFlag = 0;
 int Z_NegLimitFlag = 0;
 int Z_PosLimitFlag = 0;
+
+// Each Homing function uses two different Flags
+int Z_Homing_Flag = 0; //This Flag is used inside the Homing on Z-axis function 
+int Z_HomingDoneFlag = 0; //
 
 // Declares user-defined helper functions.
 // The definition/implementations of these functions are at the bottom of the sketch.
@@ -237,14 +274,30 @@ void setup() {
     //} // Returns: True if the negative limit switch was successfully disabled; false if a pin other than CLEARCORE_PIN_INVALID was supplied that isn't a valid digital input pin.
 
     //ConnectorM0.LimitSwitchNeg(CLEARCORE_PIN_IO0);
+    // port I/O-0 = NegLimit for X-axis (motor 0)
+    /*
     if (ConnectorM0.LimitSwitchNeg(CLEARCORE_PIN_IO0)) {
         // M-0's negative limit switch is now set to IO-0 and enabled.
-        Serial.println("IO-0 was successfully set for Negative Sensor for ConnectorM0");	
+        Serial.println("I/O-0 was successfully set for Negative Sensor for ConnectorM0");	
     }
+    // port I/O-1 = PosLimit for X-axis (motor 0)
     if (ConnectorM0.LimitSwitchPos(CLEARCORE_PIN_IO1)) {
         // M-0's positive limit switch is now set to IO-1 and enabled.
-        Serial.println("IO-1 was successfully set for Positive Sensor for ConnectorM0");
+        Serial.println("I/O-1 was successfully set for Positive Sensor for ConnectorM0");
     }
+    */
+    // port I/O-2 = NegLimit for Z-axis (motor 1)
+    if (ConnectorM1.LimitSwitchNeg(CLEARCORE_PIN_IO2)) {
+        // M-1's negative limit switch is now set to IO-2 and enabled.
+        Serial.println("I/O-2 was successfully set for Negative Sensor for ConnectorM1");	
+    }
+    // port I/0-3 = PosLimit for Z-axis (motor 1)
+    if (ConnectorM1.LimitSwitchPos(CLEARCORE_PIN_IO3)) {
+        // M-1's positive limit switch is now set to IO-3 and enabled.
+        Serial.println("I/O-3 was successfully set for Positive Sensor for ConnectorM1");
+    }
+
+   // here we need to set 2 sensors for motor_1
 
 } // END of setup() loop
 
@@ -252,25 +305,34 @@ void setup() {
 
 void loop() {    // Put your main code here, it will run repeatedly:
     /************************ Reading Motor Register ************************/
-    MotorDriver *motor = &ConnectorM0; // or ConnectorM0
-    volatile const MotorDriver::StatusRegMotor &statusReg = motor->StatusReg();
+    MotorDriver *motor_0 = &ConnectorM0; // X-axis
+    MotorDriver *motor_1 = &ConnectorM1; // Z-axis
+    // A variable should be declared volatile whenever its value can be changed by something beyond the control of the code section in which it appears
+
+    // motor_0 is instance of MotorDriver, motor0 is just "ConnectorM0" #define
+    // scope of statusReg_0 and statusReg_1 is only the main loop()
+    volatile const MotorDriver::StatusRegMotor &statusReg_0 = motor_0->StatusReg();
+    volatile const MotorDriver::StatusRegMotor &statusReg_1 = motor_1->StatusReg();
+
     //  uint32_t ClearCore::MotorDriver::StatusRegMotor::InNegativeLimit
     //  when we register hitting the InNegativeLimit, we send a message once
-    if ((statusReg.bit.InNegativeLimit == 1) && (X_NegLimitFlag == 0) ) {
+    if ((statusReg_0.bit.InNegativeLimit == 1) && (X_NegLimitFlag == 0) ) {
         Serial.print("InNegativeLimit:  ");
-        Serial.println(statusReg.bit.InNegativeLimit);
+        Serial.println(statusReg_0.bit.InNegativeLimit);
         X_NegLimitFlag = 1;
         // temp-4
-        Serial.print("X_NegLimitFlag:  "); Serial.println(X_NegLimitFlag);
+        Serial.print("X_NegLimitFlag:  "); 
+        Serial.println(X_NegLimitFlag);
 
         Udp.beginPacket(Udp.remoteIP(), Udp.remotePort());
         Udp.write("\nHit Negative Limit Sensor on axis X");
         Udp.endPacket();        
     }
-    if ((statusReg.bit.InNegativeLimit == 0) && (X_NegLimitFlag == 1) ) {
+    if ((statusReg_0.bit.InNegativeLimit == 0) && (X_NegLimitFlag == 1) ) {
         X_NegLimitFlag = 0;
         // temp-4
-        Serial.print("X_NegLimitFlag: "); Serial.println(X_NegLimitFlag);
+        Serial.print("X_NegLimitFlag: "); 
+        Serial.println(X_NegLimitFlag);
     }
 
     // This block tells us when a motor is moving ("Moving") or is not moving ("Ready")
@@ -406,13 +468,18 @@ void loop() {    // Put your main code here, it will run repeatedly:
         Udp.write(itoa(dist_Z, Z_dist_char, 10) );  // int-to-char conversion
         Udp.endPacket();
         
-        motor_0_MoveDistance(dist_X);
-        motor_1_MoveDistance(dist_Z);   
+        if ( (dist_X == 999) && (dist_Z == 999) ) {
+            Homing_Z_axis();
+        } else {
+            motor_0_MoveDistance(dist_X);
+            motor_1_MoveDistance(dist_Z);
+        }   
     }
 
     delay(10);    
 }  // end of loop()
- 
+
+
 
 
 // Motor Control functions
@@ -712,6 +779,71 @@ bool motor_1_MoveDistance(int distance) {
 
 //--------------------------- Motor 1 End --------------------------------------
 
+
+
+//if( motor1.AlertReg().bit.MotorFaulted == 1)
+// Possible input are 2 cases: 1. NegSensor is active, 2. NegSensor isn't active
+int Homing_Z_axis() {
+    Serial.print("Beginning of function Homing_Z_axis(). Z_HomingDoneFlag = ");
+    Serial.println(Z_HomingDoneFlag);
+
+    ////motor1.VelMax(Homing_velocityLimit); // slow down to 1Homing_velocityLimit
+
+    while (Z_HomingDoneFlag != 1 ) {
+        if (motor1.StatusReg().bit.InNegativeLimit == 1) {  // 2 cases: NO_Flag or Flag
+            // temp-5
+            Serial.print("motor1.StatusReg().bit.InNegativeLimit:  "); 
+            Serial.println(motor1.StatusReg().bit.InNegativeLimit);
+
+            if (Z_Homing_Flag == 0) {     // NO_Flag case: 
+                Z_Homing_Flag = 1;// set Flag=1, we just starting going positive dir
+                Serial.println("Set Z_Homing_Flag = 1"); 
+                // temp-5
+                Serial.println("Z_Homing_Flag:  "); 
+                Serial.println(Z_Homing_Flag);
+            }
+            else if (Z_Homing_Flag == 1) { 
+                // we're starting or continuing to go positive direction
+                // one step in positive direction
+                // temp-5
+                Serial.print("Z_Homing_Flag:  "); 
+                Serial.println(Z_Homing_Flag);
+
+                Serial.println("Moving one step to positive direction"); 
+                motor_1_MoveDistance(homing_step);
+            }
+        }
+        else if (Z_Homing_Flag == 1) {// NegLimit == 0 // cases: Flag or NO_Flag
+            // temp-5
+            Serial.print("motor1.StatusReg().bit.InNegativeLimit:  "); 
+            Serial.println(motor1.StatusReg().bit.InNegativeLimit);
+
+            Z_Homing_Flag = 0; //we are done
+            // temp-5
+            Serial.print("Z_Homing_Flag:  "); 
+            Serial.println(Z_Homing_Flag);
+            Serial.println("Z-axis: Homing is done");
+            Z_HomingDoneFlag = 1;
+        }
+        else { // NO_Flag, we need to move negative direction
+            // temp-5
+            Serial.print("Z_Homing_Flag:  "); 
+            Serial.println(Z_Homing_Flag);
+            Serial.println("We need to move negative direction, step size:");
+            Serial.println(-homing_step);
+
+            motor_1_MoveDistance(-homing_step); // go 1 step i negative direction
+        }
+        delay(1); // This delay is very important: wihout it a ClearCore is slow with reading the Sensor state inside the while() loop. Removing this delay causes doubling of distance from Sensor to Home position.
+    }
+    
+    Z_HomingDoneFlag = 0;
+    
+    ////motor1.VelMax(velocityLimit); // set velocity back to normal velocityLimit
+    
+    Serial.print("End of function Homing_Z_axis(). Z_HomingDoneFlag = ");
+    Serial.println(Z_HomingDoneFlag);
+}
 
 
 
