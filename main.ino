@@ -1,4 +1,8 @@
-// 30 Jan 2024 ver. 0.11 : An attempt to clarify the situation with Positive/Negative direction on X-axis, also Z-axis. Checking everything from scratch. 
+// 20 Mar 2024 ver. 0.12-adv-full an attempt to add all the code needed to the modified parser in order to get a working program.
+
+// 12 Feb 2024 ver. 0.12-adv : This works. Modified parser.
+
+// An attempt to clarify the situation with Positive/Negative direction on X-axis, also Z-axis. Checking everything from scratch. 
 // This works (ver. 0.10): sending back only one feedback message when we send to ClearCore a movement for 2 motors in one command, like "X:1000 Z:3000".
 // ip address of ClearCore is now 10.95.76.21
 
@@ -23,20 +27,21 @@
 // --------- Ethernet block ---------
 // Change the MAC address and IP address below to match your ClearCore's
 // MAC address and IP.
-// !!! Insert MAC-addr of an actual ClearCore unit
+
+
+// old Mac addr !!! Insert MAC-addr of an actual ClearCore unit
 //byte mac[] = {0xAA, 0xBB, 0xCC, 0x00, 0x00, 0x01};
 
 // !!! Test this  
 //byte mac[] = {0x24, 0x15, 0x10, 0xb0, 0x33, 0x65};  // First BenchBot
 byte mac[] = {0x24, 0x15, 0x10, 0xb0, 0x31, 0xc0};  // Second BenchBot
-
 IPAddress ip(10, 95, 76, 21);  //10.95.76.21
 
 // The local port to listen for connections on.
 unsigned int localPort = 8888;
 
 // The maximum number of characters to receive from an incoming packet
-#define MAX_PACKET_LENGTH 100
+#define MAX_PACKET_LENGTH 100 
 // Buffer for holding received packets.
 char packetReceived[MAX_PACKET_LENGTH];
 
@@ -267,6 +272,7 @@ void setup() {
         Serial.println("I/O-3 is now set to Positive Sensor for ConnectorM1 and enabled");
     }
   delay(500); // this delay is needed to give time to ClearCore for assigning proper values to Registers (it could be 250+ ms)
+
 } // END of setup() loop
 
 
@@ -454,171 +460,147 @@ if ( (motor0.StatusReg().bit.AtTargetPosition == 1) && (motor1.StatusReg().bit.A
         Serial.print(dist);
         Serial.println(); */
 
-        
-        Serial.print("\n  bytesRead value: ");
-        Serial.print(bytesRead);
-        Serial.print("\n");
-        int i = 0;
-        while (i <= bytesRead) {
-		        //Serial.println("Waiting for HLFB to assert on both motors");
-            // example: Serial.println((String)"x:"+x+" y:"+y);
-            Serial.println((String)"packetReceived[" + i + "]: " + packetReceived[i]);
-            
-            // retrieving X distance:
-            if ( (packetReceived[i] == 'X') && (packetReceived[i+1] == ':') ) {
-                Serial.print("Received 'X:'");
-                int t = 0 ;  
-                char temp_str[bytesRead - i];
-                while ( (packetReceived[t + i + 2] != ' ') && (packetReceived[t + i + 2] != '\0')) {
-                    temp_str[t] = packetReceived[t + i + 2];
-                    //Serial.print("\nvalue of t: "); Serial.print(t);
-                    t++;
-                }
-                temp_str[t] = '\0';
-                Serial.print("\nFull X string: ");
-                Serial.write(temp_str, strlen(temp_str)); // !!! pay attention: Serial.WRITE()
-                Serial.println();
-                //Serial.println((String)"temp_str:" + temp_str);
-                dist_X = atol(temp_str);
-            } 
+                
+        //int i = 0;
+        char return_message[300] = ""; // max size message to be sent back
+                           
+        // 1-20 bytes is the valid size received packet
+        if ( (0 < bytesRead) && (bytesRead < 21) ) {  
+            // CONFIG, E-STOP, STATUS, Home:X or Home:Z, X:50 and Z:50
+            // if packetReceived[0-5] equal to "CONFIG"   
+            if (memcmp(&packetReceived[0], "CONFIG", 6) == 0) {
+                Serial.print("memcmp: CONFIG");
+                //Serial.print("\n");
+                //Serial.print("initial value of return_message: ");
+                //Serial.print(return_message);
+                strcpy(return_message,"UDP: CONFIG message received");
 
-            if ( (packetReceived[i] == 'Z') && (packetReceived[i+1] == ':') ) {
-                Serial.print("Received 'Z:'");
-                int t = 0 ;  
-                char temp_str[bytesRead - i];
-                //while (packetReceived[t + i + 2] != '\0') {
-                while ( (packetReceived[t + i + 2] != ' ') && (packetReceived[t + i + 2] != '\0') ) {
-                    temp_str[t] = packetReceived[t + i + 2];
-                    //Serial.print("\nvalue of t: "); Serial.print(t);
+            // if packetReceived[0-5] equal to "E-STOP"
+            } else if (memcmp(&packetReceived[0], "E-STOP", 6) == 0) {
+                Serial.print("memcmp: E-STOP");
+                strcpy(return_message,"UDP: E-STOP message received");
+                //Serial.print(return_message);
+
+            // if packetReceived[0-5] equal to "STATUS"
+            } else if (memcmp(&packetReceived[0], "STATUS", 6) == 0) {
+                Serial.print("memcmp: STATUS");
+                strcpy(return_message,"UDP: STATUS message received");
+                //Serial.print(return_message);
+
+            // if packetReceived[0-7] equal to "CONFIG"
+            } else if (memcmp(&packetReceived[0], "HOME:X,Z", 8) == 0) {
+                // "HOME:X,z" will be interpreted as "HOME:X"
+                Serial.println("memcmp: HOME:X,Z");
+                strcpy(return_message,"UDP: HOME:X,Z message received");
+                // Home:X,Z function
+
+            // if packetReceived[0-5] equal to "HOME:X"
+            } else if (memcmp(&packetReceived[0], "HOME:X", 6) == 0) {
+                Serial.println("memcmp: HOME:X");
+                strcpy(return_message,"UDP: HOME:X message received");
+                // Home:X function
+
+            // if packetReceived[0-5] equal to "HOME:Z"
+            } else if (memcmp(&packetReceived[0], "HOME:Z", 6) == 0) {
+                Serial.println("memcmp: HOME:Z");
+                strcpy(return_message,"UDP: HOME:Z message received");
+                // Home:Z function
+                // Homing_Z_axis();
+
+            // retrieving X distance:   //int t = 0 ;
+            } else if ( (packetReceived[0] == 'X') && (packetReceived[1] == ':') ) {
+                Serial.println("Received 'X:'");
+                int t = 0 ;
+                char temp_str_X[10] = ""; // 8 positions to save an axis distance
+                while ( (packetReceived[2 + t] != ' ') && (isDigit(packetReceived[2 + t])) ) { // 2 is a shift for 'X:'
+                    temp_str_X[t] = packetReceived[t + 2];
+                    //Serial.println((String)"value of packetReceived[" + (t+2) + "]:" + packetReceived[t+2]);
                     t++;
                 }
-                temp_str[t] = '\0';
-                Serial.print("\nFull Z string: ");
-                Serial.write(temp_str, strlen(temp_str)); // !!! pay attention: Serial.WRITE()
+                temp_str_X[t] = '\0'; // termination for temp-string
+                Serial.print("Full X string: ");
+                Serial.write(temp_str_X, strlen(temp_str_X)); // !!! pay attention for Serial.write !
                 Serial.println();
-                //Serial.println((String)"temp_str:" + temp_str);
-                dist_Z = atol(temp_str);
-            } 
-           
-            i++;    
-	      }
+                // ! possible checking if only digits are in temp_str
+                dist_X = atol(temp_str_X);
+                Serial.print("long int value of dist_X: ");
+                Serial.print(dist_X);
+                // X-axis move function:
+                //motor_0_MoveDistance(dist_X);
+                               
+                Serial.println((String)"\nvalue of packetReceived[" + (t+2) + "]:" + packetReceived[t+2]); // this value should be space ' '
+                t = t + 3; //shift for 3 positions: for X, for : and for for ' '
+                // now t points to the next position after the space ' '
+                if ((packetReceived[t]=='Z') && (packetReceived[t+1]==':')) {
+                    Serial.println("Received 'Z:'");
+                    char temp_str_Z[10] = "";
+                    t++; // step from Z to :
+                    t++; // step from : to first digit
+                    int i = 0;
+                    while (packetReceived[t] != '\0') { // !! single quotes only
+                        Serial.println((String)"value of t: " + t + "   value of i: " + i);
+                        if (isDigit(packetReceived[t])) {//tests if char is a digit
+                            temp_str_Z[i] = packetReceived[t];
+                            Serial.println((String)"value of packetReceived[" + t + "]:" + packetReceived[t]);
+                            Serial.println((String)"value of temp_str_Z[" + i + "]:" + temp_str_Z[i]);
+                            //Serial.println("The character is a number");
+                        }
+                        t++;
+                        i++;
+                    }
+                    temp_str_Z[i-1] = '\0';
+                    Serial.print("\nFull Z string: ");
+                    Serial.write(temp_str_Z, strlen(temp_str_Z)); // !!! pay attention: Serial.WRITE()
+                    dist_Z = atol(temp_str_Z);
+                    // 2. Test this                
+                    Serial.print("\nlong int value of dist_Z: ");
+                    Serial.print(dist_Z);
+                    // Z-axis move function:
+                    // motor_1_MoveDistance(dist_Z);
+                } // closing if (Z:)
+
+                // construct return_message, composite of words and numbers 
+                Serial.print("\n");
+                Serial.print("initial value of return_message: ");
+                Serial.print(return_message);
+
+                strcat(return_message, "Received X:");
+                char dist_X_char[8]; 
+                itoa(dist_X, dist_X_char, 10);
+                    
+                //strcat(text_line, itoa(dist_X, X_dist_char, 10));
+                //strcpy(result, s1);
+                strcat(return_message, dist_X_char);
+                strcat(return_message, ", Z:");
+                char dist_Z_char[8] ; 
+                itoa(dist_Z, dist_Z_char, 10);
+                strcat(return_message, dist_Z_char);
+
+                Serial.print("\n");
+                Serial.print("Result: ");
+                Serial.print(return_message);
+
+            } else { //if all previous conditions are false
+                Serial.println("Received message was not recognized");
+                strcpy(return_message,"UDP: Received message was not recognized. Possible messages are: 'CONFIG', 'E-STOP', 'STATUS', 'HOME:X', 'HOME:Z', 'HOME:X,Z' and 'X:[int number] Z:[int number]'\n");
+            }
+            
+        }  // closing if ( (0 < bytesRead) && (bytesRead < 21) )
+
         // for debug purposes
         //Serial.println((String)"Integer dist_X: " + dist_X);
         //Serial.println((String)"Integer dist_Z: " + dist_Z);
 
-        
-
-
-        // !!! Feb-2, this block is UNTESTED
-        // An attempt to implement Homing on X and Z-axises
-        // if received string starts from "Home:"
-        if ( (packetReceived[0] == 'H') && (packetReceived[1] == 'o') && (packetReceived[2] == 'm') && (packetReceived[3] == '3') && (packetReceived[4] == ':') ) {
-            if ((packetReceived[5] == 'X')) {
-                // Homing on X-axis
-                Serial.print("Homing: X-axis");
-
-            } else {
-                if ((packetReceived[5] == 'Z')) {
-                  // Homing on Z-axis
-                  Serial.print("Homing: Z-axis");
-                }
-            }
-        } 
-
-
-        // Sending back reply packet back to the sender.
+        // Sending a reply packet back to the sender
         Udp.beginPacket(Udp.remoteIP(), Udp.remotePort());
-        Udp.write("Received X:");
-        //char dist_char[8];                      // these two line is just 
-        //Udp.write(itoa(dist, dist_char, 10) );  // int-to-char conversion
-        char X_dist_char[8];                      // these two line is just 
-        Udp.write(itoa(dist_X, X_dist_char, 10) );  // int-to-char convertion
-        Udp.write(" Received Z:");
-        char Z_dist_char[8];                      // these two line is just 
-        Udp.write(itoa(dist_Z, Z_dist_char, 10) );  // int-to-char conversion
+        Udp.write(return_message);
         Udp.endPacket();
-        
-        if ( (dist_X == 999) && (dist_Z == 999) ) {
-            Homing_Z_axis();
-        } else {
-            // we reverse dist_X if we can see the rear side of Motor
-            //if (X_axis_negative_is_left_Flag == 1) {
-            //    motor_0_MoveDistance(-dist_X);
-            //} else {
-                motor_0_MoveDistance(dist_X);
-            //}
-            motor_1_MoveDistance(dist_Z);
-        }   
-    }
+          
+    } // closing if (packetSize > 0)
 
     delay(10);    
 }  // end of loop()
 
-
-
-
-// Motor Control functions
-/*------------------------------------------------------------------------------
- * MoveDistance
- *
- *    Command "distance" number of step pulses away from the current position
- *    Prints the move status to the USB serial port
- *    Returns when HLFB asserts (indicating the motor has reached the commanded
- *    position)
- *
- * Parameters:
- *    int distance  - The distance, in step pulses, to move
- *
- * Returns: True/False depending on whether the move was successfully triggered.
- */
-/*bool MoveDistance(int distance) {
-    // Check if a motor alert is currently preventing motion
-	// Clear alert if configured to do so 
-    if (motor.StatusReg().bit.AlertsPresent) {
-		Serial.println("Motor alert detected.");		
-		PrintAlerts();
-		if(HANDLE_ALERTS){
-			HandleAlerts();
-		} else {
-			Serial.println("Enable automatic alert handling by setting HANDLE_ALERTS to 1.");
-		}
-		Serial.println("Move canceled.");		
-		Serial.println();
-        return false;
-    }
-
-    Serial.print("Moving distance: ");
-    Serial.println(distance);
-
-    // Command the move of incremental distance
-    motor.Move(distance);
-
-    // Waits for HLFB to assert (signaling the move has successfully completed)
-    Serial.println("Moving.. Waiting for HLFB");
-    while ( (!motor.StepsComplete() || motor.HlfbState() != MotorDriver::HLFB_ASSERTED) &&
-			!motor.StatusReg().bit.AlertsPresent) {
-        continue;
-    }
-	// Check if motor alert occurred during move
-	// Clear alert if configured to do so 
-    if (motor.StatusReg().bit.AlertsPresent) {
-		Serial.println("Motor alert detected.");		
-		PrintAlerts();
-		if(HANDLE_ALERTS){
-			HandleAlerts();
-		} else {
-			Serial.println("Enable automatic fault handling by setting HANDLE_ALERTS to 1.");
-		}
-		Serial.println("Motion may not have completed as expected. Proceed with caution.");
-		Serial.println();
-		return false;
-    } else {
-		Serial.println("Move Done");
-		return true;
-	}
-}
-//------------------------------------------------------------------------------
-*/
 
 //--------------------------- Motor 0 Beginning ------------------------------- 
 bool motor_0_MoveDistance(int distance) {
@@ -676,19 +658,7 @@ bool motor_0_MoveDistance(int distance) {
     }
 }
 
-
-/*------------------------------------------------------------------------------
- * PrintAlerts
- *
- *    Prints active alerts.
- *
- * Parameters:
- *    requires "motor" to be defined as a ClearCore motor connector
- *
- * Returns: 
- *    none
- */
- void motor_0_PrintAlerts() {
+void motor_0_PrintAlerts() {
 	// report status of alerts on motor0
  	Serial.println("Motor 0: Alerts present: ");
 	if(motor0.AlertReg().bit.MotionCanceledInAlert){
@@ -704,8 +674,8 @@ bool motor_0_MoveDistance(int distance) {
 	if(motor0.AlertReg().bit.MotorFaulted){
 		Serial.println("    MotorFaulted ");
 	}
- }
-//------------------------------------------------------------------------------
+}
+
 
 
 /*------------------------------------------------------------------------------
@@ -721,7 +691,7 @@ bool motor_0_MoveDistance(int distance) {
  * Returns: 
  *    none
  */
- void motor_0_HandleAlerts(){
+void motor_0_HandleAlerts(){
 	if(motor0.AlertReg().bit.MotorFaulted){
 		// if a motor fault is present, clear it by cycling enable
 		Serial.println("Motor 0: Faults present. Cycling enable signal to motor to clear faults.");
@@ -732,10 +702,9 @@ bool motor_0_MoveDistance(int distance) {
 	// clear alerts
 	Serial.println("Motor 0: Clearing alerts.");
 	motor0.ClearAlerts();
- }
-//------------------------------------------------------------------------------
-
+}
 //--------------------------- Motor 0 End --------------------------------------
+
 
 
 //--------------------------- Motor 1 Beginning ------------------------------- 
@@ -793,7 +762,6 @@ bool motor_1_MoveDistance(int distance) {
     }
 }
 
-
 /*------------------------------------------------------------------------------
  * PrintAlerts
  *
@@ -805,8 +773,8 @@ bool motor_1_MoveDistance(int distance) {
  * Returns: 
  *    none
  */
- void motor_1_PrintAlerts() {
-	// report status of alerts on motor0
+void motor_1_PrintAlerts() {
+  // report status of alerts on motor0
  	Serial.println("Motor 1: Alerts present: ");
 	if(motor1.AlertReg().bit.MotionCanceledInAlert){
 		Serial.println("    MotionCanceledInAlert "); }
@@ -821,8 +789,7 @@ bool motor_1_MoveDistance(int distance) {
 	if(motor1.AlertReg().bit.MotorFaulted){
 		Serial.println("    MotorFaulted ");
 	}
- }
-//------------------------------------------------------------------------------
+}
 
 
 /*------------------------------------------------------------------------------
@@ -838,7 +805,7 @@ bool motor_1_MoveDistance(int distance) {
  * Returns: 
  *    none
  */
- void motor_1_HandleAlerts(){
+void motor_1_HandleAlerts(){
 	if(motor1.AlertReg().bit.MotorFaulted){
 		// if a motor fault is present, clear it by cycling enable
 		Serial.println("Motor 1: Faults present. Cycling enable signal to motor to clear faults.");
@@ -848,13 +815,9 @@ bool motor_1_MoveDistance(int distance) {
 	}
 	// clear alerts
 	Serial.println("Motor 1: Clearing alerts.");
-	motor1.ClearAlerts();
- }
-//------------------------------------------------------------------------------
-
+	motor1.ClearAlerts();  
+}
 //--------------------------- Motor 1 End --------------------------------------
-
-
 
 //if( motor1.AlertReg().bit.MotorFaulted == 1)
 // Possible input are 2 cases: 1. NegSensor is active, 2. NegSensor isn't active
@@ -914,7 +877,7 @@ int Homing_Z_axis() {
     
     Serial.print("End of function Homing_Z_axis(). Z_HomingDoneFlag = ");
     Serial.println(Z_HomingDoneFlag);
-}
+} 
 
 
 
