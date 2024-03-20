@@ -1,6 +1,6 @@
-// 11 Jan 2024 ver. 0.06 : Homing on Z-axis implemented
-// Homing logic. Home is the leftmost position without activating NegLimit sensor. We go left (negative direction) until we hit NegLimit sensor. Next we go right (positive direction) one small step at a time until NegLimit sensor becomes not active. Done when reached the leftmost position with NO active NegLimit sensor. Home position is reached.  
-// On Z-axis, "Home" position is with the carriage in the upmost position.
+// 12 Jan 2024 ver. 0.08 : an attempt to implement Homing on X and Z axises
+// Homing logic. On Z axis "Home" is the leftmost position without activating NegLimit sensor. We go left (negative direction) until we hit NegLimit sensor. Next we go right (positive direction) until NegLimit sensor becomes not active. Done when reached the leftmost position with NO active NegLimit sensor. Home position is reached.  
+// On Z-axis, "Home" position is when the carriage is in the upmost position.
 
 /*
 Homing (Z-axis)
@@ -30,7 +30,8 @@ if ( (NegLimit == 1) && (NegRchdFlag == 0) ) {
 */
 
 // ver. 0.05 - flag for reaching NegLimit was added. Program sends a UDP message when NegLimit is reached.
-// 20 Dec 2023   ver. 0.03 : UDP-based, can move 2 motors. Implemented a receiver of two coordinates (X and Z) through UDP.
+// 20 Dec 2023   ver. 0.03 : UDP-based, can move 2 motors for the same distance
+// This is an attempt to make a receiver of two coordinates (X and Z) through UDP
 
 // To control two motors, please, send a UDP packet to 192.168.0.121, port 8888.
 // in Linux can use netcat: "nc -u 192.168.0.121 8888"
@@ -50,7 +51,10 @@ if ( (NegLimit == 1) && (NegRchdFlag == 0) ) {
 // Change the MAC address and IP address below to match your ClearCore's
 // MAC address and IP.
 byte mac[] = {0xAA, 0xBB, 0xCC, 0x00, 0x00, 0x01};
-IPAddress ip(192, 168, 0, 121);
+IPAddress ip(10, 95, 76, 21);  
+//IPAddress ip(192, 168, 0, 121);
+
+//10.95.76.21
 
 // The local port to listen for connections on.
 unsigned int localPort = 8888;
@@ -90,12 +94,19 @@ bool usingDhcp = false;
 
 // Define the velocity and acceleration limits to be used for each move
 // speed of 10000 is too high for Z-axis motor (Z-axis motor takes up to 5000 pulses per sec) 
+// 3000 is too high for X axis
 int velocityLimit = 3000; // pulses per sec, 5000 is max for vertical Z-axis
+//int X_velocityLimit = 1000;
+//int Z_velocityLimit = 3000;
+
 ////int Homing_velocityLimit = 500;
-int accelerationLimit = 100000; // pulses per sec^2
+int accelerationLimit = 30000; //50000;// 100000; // pulses per sec^2
 
 // 20 -> 18mm distance after homing
 int homing_step = 10; // Size of a step for Homing function. Was 10, was 5. 
+
+int X_axis_negative_is_left_Flag = 1; // 1 when we can see rear side of Motor
+                                      // 0 when we can see shaft of Motor
 
 int X_NegLimitFlag = 0;  // flag = 1 while NegLimit sensor is reached
 int X_PosLimitFlag = 0;
@@ -275,17 +286,19 @@ void setup() {
 
     //ConnectorM0.LimitSwitchNeg(CLEARCORE_PIN_IO0);
     // port I/O-0 = NegLimit for X-axis (motor 0)
-    /*
+    
+    
     if (ConnectorM0.LimitSwitchNeg(CLEARCORE_PIN_IO0)) {
         // M-0's negative limit switch is now set to IO-0 and enabled.
         Serial.println("I/O-0 was successfully set for Negative Sensor for ConnectorM0");	
     }
+    
     // port I/O-1 = PosLimit for X-axis (motor 0)
     if (ConnectorM0.LimitSwitchPos(CLEARCORE_PIN_IO1)) {
         // M-0's positive limit switch is now set to IO-1 and enabled.
         Serial.println("I/O-1 was successfully set for Positive Sensor for ConnectorM0");
     }
-    */
+    
     // port I/O-2 = NegLimit for Z-axis (motor 1)
     if (ConnectorM1.LimitSwitchNeg(CLEARCORE_PIN_IO2)) {
         // M-1's negative limit switch is now set to IO-2 and enabled.
@@ -311,14 +324,14 @@ void loop() {    // Put your main code here, it will run repeatedly:
 
     // motor_0 is instance of MotorDriver, motor0 is just "ConnectorM0" #define
     // scope of statusReg_0 and statusReg_1 is only the main loop()
-    volatile const MotorDriver::StatusRegMotor &statusReg_0 = motor_0->StatusReg();
-    volatile const MotorDriver::StatusRegMotor &statusReg_1 = motor_1->StatusReg();
+    //volatile const MotorDriver::StatusRegMotor &statusReg_0 = motor_0->StatusReg();
+    //volatile const MotorDriver::StatusRegMotor &statusReg_1 = motor_1->StatusReg();
 
-    //  uint32_t ClearCore::MotorDriver::StatusRegMotor::InNegativeLimit
-    //  when we register hitting the InNegativeLimit, we send a message once
-    if ((statusReg_0.bit.InNegativeLimit == 1) && (X_NegLimitFlag == 0) ) {
+
+    //  X-axis: when we hit the InNegativeLimit Sensor, we send a message once
+    if ((motor0.StatusReg().bit.InNegativeLimit == 1) && (X_NegLimitFlag == 0)) {
         Serial.print("InNegativeLimit:  ");
-        Serial.println(statusReg_0.bit.InNegativeLimit);
+        Serial.println(motor0.StatusReg().bit.InNegativeLimit);
         X_NegLimitFlag = 1;
         // temp-4
         Serial.print("X_NegLimitFlag:  "); 
@@ -327,13 +340,38 @@ void loop() {    // Put your main code here, it will run repeatedly:
         Udp.beginPacket(Udp.remoteIP(), Udp.remotePort());
         Udp.write("\nHit Negative Limit Sensor on axis X");
         Udp.endPacket();        
-    }
-    if ((statusReg_0.bit.InNegativeLimit == 0) && (X_NegLimitFlag == 1) ) {
+    } // setting Flag back to 0 when NegativeLimit Sensor is not active any more
+    if ((motor0.StatusReg().bit.InNegativeLimit == 0) && (X_NegLimitFlag == 1)) {
         X_NegLimitFlag = 0;
         // temp-4
+        Serial.print("We moved out from the Negative Limit Sensor");
         Serial.print("X_NegLimitFlag: "); 
         Serial.println(X_NegLimitFlag);
     }
+
+    //  X-axis: when we hit the InPositiveLimit Sensor, we send a message once
+    if ((motor0.StatusReg().bit.InPositiveLimit == 1) && (X_PosLimitFlag == 0)) {
+        Serial.print("InPositiveLimit:  ");
+        Serial.println(motor0.StatusReg().bit.InPositiveLimit);
+        X_PosLimitFlag = 1;
+        // temp-4
+        Serial.print("X_PosLimitFlag:  "); 
+        Serial.println(X_PosLimitFlag);
+
+        Udp.beginPacket(Udp.remoteIP(), Udp.remotePort());
+        Udp.write("\nHit Positive Limit Sensor on axis X");
+        Udp.endPacket();        
+    } // setting Flag back to 0 when PositiveLimit Sensor is not active any more
+    if ((motor0.StatusReg().bit.InPositiveLimit == 0) && (X_PosLimitFlag == 1)) {
+        X_PosLimitFlag = 0;
+        // temp-4
+        Serial.print("We moved out from the Positive Limit Sensor");
+        Serial.print("X_PosLimitFlag: "); 
+        Serial.println(X_PosLimitFlag);
+    }
+
+
+    
 
     // This block tells us when a motor is moving ("Moving") or is not moving ("Ready")
     /*if (statusReg.bit.ReadyState == MotorDriver::MOTOR_MOVING) {
@@ -471,7 +509,12 @@ void loop() {    // Put your main code here, it will run repeatedly:
         if ( (dist_X == 999) && (dist_Z == 999) ) {
             Homing_Z_axis();
         } else {
-            motor_0_MoveDistance(dist_X);
+            // we reverse dist_X if we can see the rear side of Motor
+            //if (X_axis_negative_is_left_Flag == 1) {
+            //    motor_0_MoveDistance(-dist_X);
+            //} else {
+                motor_0_MoveDistance(dist_X);
+            //}
             motor_1_MoveDistance(dist_Z);
         }   
     }
