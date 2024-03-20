@@ -1,4 +1,5 @@
-// 18 Jan 2024 ver. 0.09 : Implemented sending back an UDP packet as a feedback when a movement on any axis is finished. If we send "X:1000 Z:2500" we will receive two independt messages "X-axis: finished moving, covered distance = 1000" and "Z-axis: finished moving, covered distance = 2500" in different moments of time. The situation with Positive/Negative direction on X-axis hasn't fully been clarified, but was found a way to set "inverse" mode in Motor preferences on X-axis via USB-IR cable. 
+// 30 Jan 2024 ver. 0.10 : This works: sending back only one feedback message when we send to ClearCore a movement for 2 motors in one command, like "X:1000 Z:3000". 
+// The situation with Positive/Negative direction on X-axis hasn't fully been clarified, but was found a way to set "inverse" mode in Motor preferences on X-axis via USB-IR cable. 
 
 // ip address of ClearCore was updated from 192.168.0.121 to 10.95.76.21
 
@@ -76,6 +77,7 @@ int accelerationLimit = 30000; //50000;// 100000; // pulses per sec^2
 // 20 -> 18mm distance after homing
 int homing_step = 10; // Size of a step for Homing function. Was 10, was 5. 
 
+// ClearCore has ARM Cortex-M4 32 bit processor. 32 bit Signed Integer can house a number from −2,147,483,648 to 2,147,483,647
 int32_t dist_X = 0;
 int32_t dist_Z = 0;
 
@@ -89,6 +91,8 @@ int Z_PosLimitFlag = 0;
 
 int X_MovingFlag = 0;
 int Z_MovingFlag = 0;
+
+int CarrMovingFlag = 0;
 
 // Each Homing function uses two different Flags
 int Z_Homing_Flag = 0; //This Flag is used inside the Homing on Z-axis function 
@@ -230,25 +234,7 @@ void setup() {
 	  } else {
 		    Serial.println("Motor 1 is Ready");	
 	  }
-// old version from original example by Teknic ("DualAxisSyncronized" sketch)
-/* old version was not able to say from what motor an alert is 
-    if (motor0.StatusReg().bit.AlertsPresent || 
-		motor1.StatusReg().bit.AlertsPresent) {
-		    Serial.println("Motor alert detected.");		
-		    motor_0_PrintAlerts();
-		    if(HANDLE_ALERTS){
-			      motor_0_HandleAlerts();
-            motor_1_HandleAlerts(); // not sure if a call of HandleAlerts() for a motor having no alerts 
 
-		    } else {
-			      Serial.println("Enable automatic alert handling by setting HANDLE_ALERTS to 1.");
-		    }
-		    Serial.println("Enabling may not have completed as expected. Proceed with caution.");		
- 		    Serial.println();
-	  } else {
-		    Serial.println("Motors Ready");	
-	  }
-*/    
   // --------- end of Motor Control block ---------
 
   // Negative and Positive end Sensors
@@ -282,14 +268,14 @@ void setup() {
         // M-1's positive limit switch is now set to IO-3 and enabled.
         Serial.println("I/O-3 is now set to Positive Sensor for ConnectorM1 and enabled");
     }
-
+  delay(500); // this delay is needed to give time to ClearCore for assigning proper values to Registers (it could be 250+ ms)
 } // END of setup() loop
 
 
 
 void loop() {    // Put your main code here, it will run repeatedly:
     /************************ Reading Motor Register ************************/
-    // Can we move these two lines to setup loop ? - check in last turn !!!
+    // Can we move these two lines to setup loop ? - check in the last turn !
     MotorDriver *motor_0 = &ConnectorM0; // X-axis
     MotorDriver *motor_1 = &ConnectorM1; // Z-axis
     // A variable should be declared volatile whenever its value can be changed by something beyond the control of the code section in which it appears
@@ -300,7 +286,93 @@ void loop() {    // Put your main code here, it will run repeatedly:
     //int32_t dist_X = 0;
     //int32_t dist_Z = 0;
 
+// If movement for only one axis is received, we use the current code (2 if-else statements)
+// When we have a movement for two axises, we go another way (possibly, a Flag) 
+
+/*
+// Both motors are moving
+if ( (motor0.StatusReg().bit.AtTargetPosition == 0) && (motor1.StatusReg().bit.AtTargetPosition == 0) ) {
+  Both_MovingFlag = 1;
+
+} else {
+// (0 is moving) || (1 is moving) || (0 AND 1 stopped)
+// 3 cases:
+
+}
+
+if (Both_MovingFlag == 1) {
+  // when Both motors stopped
+  if (  (motor0.StatusReg().bit.AtTargetPosition == 1) && (motor1.StatusReg().bit.AtTargetPosition == 1) ) {
+    // send UDP message with both covered distances
+
+  }
+
+}
+*/
+
+// Try this !
+
+// if any of two motors is moving, or both are moving
+if ( ( (motor0.StatusReg().bit.AtTargetPosition == 0) || (motor1.StatusReg().bit.AtTargetPosition == 0) ) && (CarrMovingFlag == 0) ) {
+  CarrMovingFlag = 1;
+  // some movement has started
+  //Serial.print("Some movement has started, CarrMovingFlag = ");
+  Serial.print("Some movement is has started, CarrMovingFlag = ");
+  Serial.println(CarrMovingFlag);
+} 
+// when one or two motors were moving, but now both motors stopped
+if ( (motor0.StatusReg().bit.AtTargetPosition == 1) && (motor1.StatusReg().bit.AtTargetPosition == 1) && (CarrMovingFlag == 1) ) {
+  CarrMovingFlag = 0;
+  // send an UDP message that any movement finished
+  Serial.print("All movements have finished, CarrMovingFlag = ");
+  Serial.println(CarrMovingFlag);
+
+  Udp.beginPacket(Udp.remoteIP(), Udp.remotePort());
+  if (dist_X == 0) { 
+    // movement was ONLY on Z-axis
+    Serial.print("Movement was only on Z-axis");
+    // send UDP message
+    Udp.write("\nAll movements have finished, Z-axis covered distance = ");
+    char Z_axis_char[8];                        // these two line is just 
+    Udp.write(itoa(dist_Z, Z_axis_char, 10) );  // int-to-char convertion
+  } 
+  else { // movement was on both X-axis and Z-axis OR only on X-axis
+    if (dist_X != 0 && dist_Z != 0) {
+      // movement was on both X-axis and Z-axis
+      Serial.print("Movement was on both X-axis and Z-axis");
+      // send UDP message
+      Udp.write("\nAll movements have finished, X-axis covered distance = ");
+      char X_axis_char[8];                        // these two line is just 
+      Udp.write(itoa(dist_X, X_axis_char, 10) );  // int-to-char convertion
+      Udp.write(", Z-axis covered distance = ");
+      char Z_axis_char[8];                        // these two line is just 
+      Udp.write(itoa(dist_Z, Z_axis_char, 10) );  // int-to-char convertion
+    } else { 
+      // movement was ONLY on X-axis
+      Serial.print("Movement was only on X-axis");
+      // send UDP message
+      Udp.write("\nAll movements have finished, X-axis covered distance = ");
+      char X_axis_char[8];                        // these two line is just 
+      Udp.write(itoa(dist_X, X_axis_char, 10) );  // int-to-char convertion
+    }
+  }
+  
+  Udp.endPacket();
+}
+
+/*
+else { // both are stopped
+  // if Carriage was moving, but now stopped
+  if ( CarrMovingFlag == 1 ) {
+    // send UDP message that a movement is done
+    CarrMovingFlag = 0;  // Set Flag = 0, means 
+  }
+} 
+*/
+
+/*
     // X-axis: Sending back UDP packet when movement is finished
+    // add (Both_MovingFlag == 0)
     if (motor0.StatusReg().bit.AtTargetPosition == 1) {//not started or finished
         if (X_MovingFlag == 0) {  // 1. not started movement
           // we are just waiting for a movement to be sent
@@ -312,7 +384,7 @@ void loop() {    // Put your main code here, it will run repeatedly:
           Udp.beginPacket(Udp.remoteIP(), Udp.remotePort());
           Udp.write("\nX-axis: finished moving, covered distance = ");
           char X_axis_char[8];  // these two line is just 
-          // !!! check size of int on ClearCore
+          
           Udp.write(itoa(dist_X, X_axis_char, 10) );  // int-to-char convertion
           Udp.endPacket();  
 		    } //
@@ -347,7 +419,7 @@ void loop() {    // Put your main code here, it will run repeatedly:
         } 
   
     }
-
+*/
     
 
     
