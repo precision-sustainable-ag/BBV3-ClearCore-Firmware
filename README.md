@@ -72,7 +72,7 @@ IMPORTANT: This verion of the program does not send a message when movements are
 
 Implemented, tested and ready for use a homing function for the Z-axis.
 Homing or returning home is the movement of a camera to its initial position on an axis. For the Z-axis, the initial position is the upmost position of the camera. I.e. when the homing function for Z-axis is called, the camera will immediately attempt to move to its highest position.
-To call the homing on the Z-axis function, send a message to ClearCore:
+To call the homing on the Z-axis function, send this message to ClearCore:
 ```
 X:999 Z:999
 ```
