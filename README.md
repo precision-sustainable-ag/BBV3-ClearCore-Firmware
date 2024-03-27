@@ -25,6 +25,7 @@ Here, we set the ClearCore MAC address to "24-15-10-b0-81-d0".
 
 
 **Setting IP-address and port number**
+
 The ClearCore module should be set to an IP-address from the same subnetwork the BenchBot v3 system uses. To set the IP-address we use the command:
 ```
 IPAddress ip(10, 80, 65, 55);
