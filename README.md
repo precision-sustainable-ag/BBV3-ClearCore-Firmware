@@ -42,7 +42,7 @@ unsigned int localPort = 8888;
 
 The program can independently move both motors for different distances and in different directions. In this version of the firmware program, it is expected that UDP messages for movements are sent to ClearCore with the delay needed to complete the movements. When a command to move "X:3000 Z:10000" is sent, it is expected that the next command to move (or the Homing command) will be sent after the amount of time needed to perform the move "X:3000 Z:10000".
 
-The BenchBot v3 has four associated limit sensors (or switches): Negative and Positive for X-axis, Negative and Positive for Z-axis. For example, the X-axis is controlled by Motor0 and there are Negative and Positive sensors associated with Motor0 (i.e. associated with the X-axis).
+The BenchBot v3 has four associated limit sensors: Negative and Positive for X-axis, Negative and Positive for Z-axis. For example, the X-axis is controlled by Motor0 and there are Negative and Positive sensors associated with Motor0 (i.e. associated with the X-axis).
 
 These four limit sensors are controlled "automatically" by ClearCore at a lower level. They are not controlled by this program. But in this program we can read the state of each of the sensors (through the Registers).
 
