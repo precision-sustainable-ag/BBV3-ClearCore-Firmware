@@ -65,7 +65,7 @@ Received X:1000 Received Z:5000
 ```
 The same moment, the corresponding carriage movements start.
 
-This program does not send a message when movements are finished.
+IMPORTANT This verion of the program does not send a message when movements are finished.
 
 
 **Homing for Z-axis**
