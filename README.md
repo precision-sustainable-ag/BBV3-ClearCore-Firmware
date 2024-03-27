@@ -46,7 +46,7 @@ The BenchBot v3 has four associated limit sensors: Negative and Positive for X-a
 
 These four limit sensors are controlled "automatically" by ClearCore at a lower level. They are not controlled by this program. But in this program we can read the state of each of the sensors (through the Registers).
 
-When a limit sensor is reached, the associated motor immediately stops and this functionality is implemented in the low-level ClearCore firmware flashed to ClearCore by its producer. This functionality is already built-in in ClearCore and is not implemented in this program!.
+When a limit sensor is reached, the associated motor immediately stops and this functionality is implemented in the low-level ClearCore firmware flashed to ClearCore by its producer. This functionality is already built-in in ClearCore and is not implemented in this program.
 
 When on X-axis (and only on X-axis!) a Negative Limit sensor is reached, the program sends a UDP message "\nHit Negative Limit Sensor on axis X" together with a serial (over an optional USB cable) debug message "InNegativeLimit:  ". When the carriage moves away from the sensor, the program also sends a serial debug message: "We moved out from the Negative Limit Sensor".
 The same works for the Positive Limit sensor on the X-axis. When this sensor is reached, the program sends a UDP message "\nHit Positive Limit Sensor on axis X" together with a serial debug message "InPositiveLimit:  ". When the carriage moves away from the sensor, the program sends a serial debug message "We moved out from the Positive Limit Sensor" over USB.
