@@ -1,32 +1,6 @@
-// 27 Mar 2024   BenchBot v3 ClearCore firmware_v0.1 
-// cleaned code from Feb 2024 (ver.0.08 in old numeration)
-// A stable firmware version with homing only on the Z-axis and without sending 
-// a UDP response when movements are finished.
-
-// Homing logic. On the Z-axis (the vertical axis), the "Home" is the highest 
-// position of the camera without activating the Positive Limit sensor on the 
-// Z-axis. To get this position, the camera moves up (positive direction) until 
-// it reaches and activates the Positive Limit sensor. The next step is to go 
-// down (negative direction) until the Positive Limit sensor becomes inactive. 
-// Done when have reached the upmost position with the INACTIVE Positive Limit 
-// sensor on Z-axis. "Home" position is reached.
-
-// The Homing on Z-axis function is implemented for experimental purposes.
-// To activate Homing on Z-axis, send the command "X:999 Z:999".
-
-// X-axis: negative direction is LEFT, positive direction is RIGHT
-// Z-axis: negative direction is DOWN, positive direction is UP
-
-// To control two motors, please, send a UDP packet to 10.95.76.21, port 8888.
-// in Linux (or MacOS with "brew") can use netcat: "nc -u 10.95.76.21 8888"
-// Message format: X:number Z:number, number is an integer, can be negative.
-// For example: "X:1000 Z:-5000" (one space between X:1000 and Z:-5000). 
-// 0-th motor controls X-axis (horiz.), 1-st motor controls Z-axis (vertical)
-
-/*Links:
- * ** ClearCore Documentation: https://teknic-inc.github.io/ClearCore-library/
- * ** ClearCore Manual: https://www.teknic.com/files/downloads/clearcore_user_manual.pdf
- */
+// 28 Mar 2024   BenchBot v3 ClearCore firmware_v0.1 
+// A stable firmware version with homing only on the Z-axis.
+// Doesn't send a UDP response when movements are finished.
 
 #include <Ethernet.h>  // needed only for Ethernet
 #include "ClearCore.h" // needed only for Motor control
@@ -82,10 +56,7 @@ int accelerationLimit = 30000; //50000;// 100000; // pulses per sec^2
 
 int homing_step = 10; // Step size for the Homing function, was 5 
 
-int X_axis_negative_is_left_Flag = 1; // 1 when we can see rear side of Motor
-                                      // 0 when we can see shaft of Motor
-
-int X_NegLimitFlag = 0;  // flag = 1 while NegLimit sensor is reached
+int X_NegLimitFlag = 0;  // flag == 1 while NegLimit sensor is reached
 int X_PosLimitFlag = 0;
 int Z_NegLimitFlag = 0;
 int Z_PosLimitFlag = 0;
@@ -96,7 +67,6 @@ int Z_HomingDoneFlag = 0; // 1 when homing is done
 
 // Declares user-defined helper functions.
 // The definition/implementations of these functions are at the bottom of the sketch.
-/////bool MoveDistance(int distance);
 bool motor_0_MoveDistance(int distance);
 bool motor_1_MoveDistance(int distance);
 
@@ -104,8 +74,8 @@ void motor_0_PrintAlerts();
 void motor_1_PrintAlerts();
 void motor_0_HandleAlerts();
 void motor_1_HandleAlerts();
-
 // --------- end of Motor Control block ---------
+
 
 // this loop in executed once, after turning on ClearCore
 void setup() {
@@ -171,7 +141,6 @@ void setup() {
     motor1.VelMax(velocityLimit);
 
     // Set the maximum acceleration for each move
-    /////motor.AccelMax(accelerationLimit);
     motor0.AccelMax(accelerationLimit);
     motor1.AccelMax(accelerationLimit);
 
@@ -270,6 +239,7 @@ void loop() {    // Put your main code here, it will run repeatedly:
     // An example of how to read the Motor Registers
     // if ( motor0.StatusReg().bit.InNegativeLimit == 1 )
 
+// -------- Sending UDP msg when Limit Sensors ONLY on X-axis reached ----------
     //  X-axis: when we reach the InNegativeLimit Sensor, we send a message once
     if ((motor0.StatusReg().bit.InNegativeLimit == 1) && (X_NegLimitFlag == 0)) {
         Serial.print("InNegativeLimit:  ");
@@ -313,7 +283,7 @@ void loop() {    // Put your main code here, it will run repeatedly:
         Serial.print("X_PosLimitFlag: "); 
         Serial.println(X_PosLimitFlag);
     }
-
+// ------- END Sending UDP msg when Limit Sensors ONLY on X-axis reached -------
 
     // Look for a received packet.
     int packetSize = Udp.parsePacket();
@@ -360,29 +330,32 @@ void loop() {    // Put your main code here, it will run repeatedly:
                 Serial.print("Received 'X:'");
                 int t = 0 ;  
                 char temp_str[bytesRead - i];
+                // while (not space symbol OR end of char array symbol)
                 while ( (packetReceived[t + i + 2] != ' ') && (packetReceived[t + i + 2] != '\0')) {
                     temp_str[t] = packetReceived[t + i + 2];
                     //Serial.print("\nvalue of t: "); Serial.print(t);  //debug
                     t++;
                 }
-                temp_str[t] = '\0';
+                temp_str[t] = '\0'; // put '\0' at the end char array
                 Serial.print("\nFull X string: ");
                 Serial.write(temp_str, strlen(temp_str));
                 Serial.println();
                 //Serial.println((String)"temp_str:" + temp_str); // for debug
                 dist_X = atol(temp_str); // transform char array to integer
             } 
-
+            
+            // retrieving Z distance:
             if ( (packetReceived[i] == 'Z') && (packetReceived[i+1] == ':') ) {
                 Serial.print("Received 'Z:'");
                 int t = 0 ;  
                 char temp_str[bytesRead - i];
+                // while (not space symbol OR end of char array symbol)
                 while ( (packetReceived[t + i + 2] != ' ') && (packetReceived[t + i + 2] != '\0') ) {
                     temp_str[t] = packetReceived[t + i + 2];
                     //Serial.print("\nvalue of t: "); Serial.print(t); // debug
                     t++;
                 }
-                temp_str[t] = '\0';
+                temp_str[t] = '\0'; // put '\0' at the end char array
                 Serial.print("\nFull Z string: ");
                 Serial.write(temp_str, strlen(temp_str)); 
                 Serial.println();
@@ -396,15 +369,15 @@ void loop() {    // Put your main code here, it will run repeatedly:
         //Serial.println((String)"Integer dist_X: " + dist_X);
         //Serial.println((String)"Integer dist_Z: " + dist_Z);
 
-        // Sending a reply UDP packet back to the sender
-        // with the distances we retrieved
+        // Sending a UDP message back to the sender
+        // with the retrieved X and Z distances 
         Udp.beginPacket(Udp.remoteIP(), Udp.remotePort());
         Udp.write("Received X:");
-        char X_dist_char[8];                        // these two line is just 
-        Udp.write(itoa(dist_X, X_dist_char, 10) );  // int-to-char convertion
+        char X_dist_char[8];   // these two line is just int-to-char convertion
+        Udp.write(itoa(dist_X, X_dist_char, 10) );  // and sending a UDP msg
         Udp.write(" Received Z:");
-        char Z_dist_char[8];                        // these two line is just 
-        Udp.write(itoa(dist_Z, Z_dist_char, 10) );  // int-to-char conversion
+        char Z_dist_char[8];   // these two line is just int-to-char convertion
+        Udp.write(itoa(dist_Z, Z_dist_char, 10) );  // and sending a UDP msg
         Udp.endPacket();
         
         // if receive X:999 Z:999, call Homing for Z-axis function
@@ -653,7 +626,7 @@ bool motor_1_MoveDistance(int distance) {
 
 
 
-// Experimental Homing for Z-axis. Works.
+// Homing for Z-axis. Works.
 int Homing_Z_axis() {
     //Serial.print("Beginning of function Homing_Z_axis(). Z_HomingDoneFlag = ");   // for debug
     //Serial.println(Z_HomingDoneFlag); // for debug
@@ -668,7 +641,7 @@ int Homing_Z_axis() {
             Serial.print("motor1.StatusReg().bit.InNegativeLimit:  "); 
             Serial.println(motor1.StatusReg().bit.InNegativeLimit);
 
-            // 1 case: if Z_Homing_Flag is 0, we set it to 1 and start Homing
+            // 1st case: if Z_Homing_Flag is 0, we set it to 1 and start Homing
             if (Z_Homing_Flag == 0) { 
                 Z_Homing_Flag = 1; // set Flag=1, we just starting going positive dir
                 Serial.println("Set Z_Homing_Flag = 1"); 
@@ -680,19 +653,20 @@ int Homing_Z_axis() {
             // so, we do a homing step
             else if (Z_Homing_Flag == 1) { 
                 // go one step in POSITIVE direction
-                
-                // for debug
-                Serial.print("Z_Homing_Flag:  "); 
-                Serial.println(Z_Homing_Flag);
+
+                Serial.print("Z_Homing_Flag:  "); // for debug
+                Serial.println(Z_Homing_Flag); // for debug
 
                 Serial.println("Moving one step to positive direction"); 
                 motor_1_MoveDistance(homing_step); //one step in POSITIVE direct
             }
         }
+
         // when Negative Limit sensor is not reached
         // 2 cases: moved to Neg Limit or moved away from Neg Limit sensor
-
-        else if (Z_Homing_Flag == 1) { // Z_Homing_Flag == 1, when moved away from Neg Limit sensor. Homing is Done.
+        else if (Z_Homing_Flag == 1) { 
+            // Z_Homing_Flag == 1, when moved away from Neg Limit sensor.
+            // Homing is Done.
 
             // for debug
             Serial.print("motor1.StatusReg().bit.InNegativeLimit:  "); 
@@ -705,16 +679,21 @@ int Homing_Z_axis() {
             Serial.println("Z-axis: Homing is done");
             Z_HomingDoneFlag = 1; // finished Homing
         }
-        else { // Z_Homing_Flag == 0, we need to move negative direction (towards the Negative Limit sensor)
-            // for debug
-            Serial.print("Z_Homing_Flag:  "); 
-            Serial.println(Z_Homing_Flag);
+        else { 
+            // Z_Homing_Flag == 0, we need to move negative direction 
+            // (towards the Negative Limit sensor)
+
+            Serial.print("Z_Homing_Flag:  ");   // for debug
+            Serial.println(Z_Homing_Flag);      // for debug
             Serial.println("We need to move negative direction, step size:");
             Serial.println(-homing_step); 
 
-            motor_1_MoveDistance(-homing_step); // go one step i negative direction
+            motor_1_MoveDistance(-homing_step); // go one step in negative direction
         }
-        delay(1); // This delay is very important: wihout it a ClearCore is slow with reading the Sensor state inside the while() loop. Removing this delay causes doubling of distance from Sensor to Home position.
+        delay(1); // This delay is very important: wihout it a ClearCore
+        // is slow with reading the Sensor state inside the while() loop.
+        // Removing this delay causes doubling of the distance between 
+        // Sensor and Home position.
     }
     
     Z_HomingDoneFlag = 0;

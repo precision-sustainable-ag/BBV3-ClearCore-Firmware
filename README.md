@@ -1,6 +1,6 @@
 # Description for Firmware program v0.1 for BBv3.
 
-27 Mar 2024
+28 Mar 2024
 
 This is probably the most stable version, currently flashed on the semi-field setup at HFL.
 
@@ -17,7 +17,7 @@ The user doesn't have to read the serial output. Neither reading of this is need
 **Setting up MAC Address**
 
 Each ClearCore module has a unique MAC address, flashed on it by the producer. A MAC address is a 6 byte sequence like "24-15-10-b0-81-d0". Different MAC addresses for devices operating in the same network are needed to prevent traffic collisions. It is possible to use a random MAC address or something like "AA-BB-CC-DD-00-11". In this case, the program will still work and the ClearCore will be responding normally, but it will take slightly more time for the UDP packets to be recognized in ClearCore. That is why we should state in this program a real MAC-address of an actual ClearCore module we are going to use with the program.
-To set the MAC address of your ClearCore module in the program, we use the command:
+To set the MAC address of your ClearCore module in the program, use the command:
 ```
 byte mac[] = {0x24, 0x15, 0x10, 0xb0, 0x81, 0xd0};
 ```
@@ -52,6 +52,19 @@ When on X-axis (and only on X-axis!) a Negative Limit sensor is reached, the pro
 The same works for the Positive Limit sensor on the X-axis. When this sensor is reached, the program sends a UDP message "\nHit Positive Limit Sensor on axis X" together with a serial debug message "InPositiveLimit:  ". When the carriage moves away from the sensor, the program sends a serial debug message "We moved out from the Positive Limit Sensor" over USB.
 
 
+**Sending messages to ClearCore over Ethernet**
+
+In the BenchBot v3 system, ClearCore controls movements of the camera on X- and Z-axes. ClearCore is connected with limit sensors and with some other equipment (the "E-stop" system etc.). In a normal operation mode, UDP messages are sent over Ethernet to ClearCore by the "Brain" computing unit of the BenchBot v3.
+Also, it is possible to send UDP messages through Ethernet directly from a computer. To do so, a user will need a computer with software for sending UDP messages. One of the options is to use the "netcat" program or the improved and more advanced analog, the "ncat".
+The "netcat" traditionally works on Linux, but can be easily installed on a Mac using the "brew" software package management system.
+To send a UDP message to ClearCore with the "netcat", the user needs to know the IP address of the ClearCore module and the port number. For example, the command to move on the X-axis for 1000 steps in positive direction and simultaneously to move on the Z-axis for 5000 in negative direction to a ClearCore module with IP address 10.95.76.21 and port 8888 will be:
+```
+nc -u 10.95.76.21 8888
+```
+Here "nc" stands for "netcat", "-u" stands for UDP, "10.95.76.21" is the IP address and 8888 is the port number.
+After typing this command in a terminal, the user should press Enter and type the message you want to send to the ClearCore module. When the message is ready, pressing Enter again will initiate sending of the message.
+
+
 **Message to move**
 
 When the program receives a message to move, for example "X:1000 Z:3000", after parsing this message and deriving the distances, the program sends back a UDP message with the derived distances. In this way, the sending side can know what distances (numbers) the ClearCore program derived.
@@ -65,15 +78,34 @@ Received X:1000 Received Z:5000
 ```
 The same moment, the corresponding carriage movements start.
 
+For the X-axis, the negative direction is LEFT, the positive direction is RIGHT.
+For the Z-axis, the negative direction is DOWN, the positive direction is UP.
+
 IMPORTANT: This verion of the program does not send a message when movements are finished.
+
+
+**Homing logic: how to get to the "Home" position**
+
+This version of the program has a homing function only on the Z-axis (the vertical axis), the "Home" is the highest position of the camera without activating the Positive Limit sensor on the Z-axis. To get this position, the camera should move up (positive direction) until it reaches and activates the Positive Limit sensor. The next step is to go down (negative direction) until the Positive Limit sensor becomes inactive. Homing is done when the camera has reached the upmost position with the INACTIVE Positive Limit sensor on the Z-axis. This position is called the "Home" position.
 
 
 **Homing for Z-axis**
 
-Implemented, tested and ready for use a homing function for the Z-axis.
-Homing or returning home is the movement of a camera to its initial position on an axis. For the Z-axis, the initial position is the upmost position of the camera. I.e. when the homing function for Z-axis is called, the camera will immediately attempt to move to its highest position.
+Implemented, tested and ready for use a homing function for the Z-axis. Homing or returning to "Home" is the movement of a camera to its initial position on an axis. For the Z-axis, the initial position is the upmost position of the camera. I.e. when the homing function for Z-axis is called, the camera will immediately attempt to move to its highest position.
 To call the homing on the Z-axis function, send this message to ClearCore:
 ```
 X:999 Z:999
 ```
 Z-axis homing was implemented for testing purposes.
+
+
+**ClearCore Documentation**
+
+ClearCore is an industrial I/O and motion controller. Made by "Teknic", the producer of the ClearPath motors which are used in BenchBot v3 for X- and Z-axes.
+
+Links for ClearCore documentation and manual:
+
+```
+ClearCore Documentation: https://teknic-inc.github.io/ClearCore-library/
+ClearCore Manual: https://www.teknic.com/files/downloads/clearcore_user_manual.pdf
+``` 
