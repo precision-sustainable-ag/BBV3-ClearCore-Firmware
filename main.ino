@@ -186,7 +186,7 @@ void setup() {
     if (motor1.StatusReg().bit.AlertsPresent) {
         Serial.println("Motor 1: alert detected.");		
         motor_1_PrintAlerts();
-        if(HANDLE_ALERTS){
+        if(HANDLE_ALERTS) {
             motor_1_HandleAlerts();
         } else {
             Serial.println("Enable automatic alert handling by setting HANDLE_ALERTS to 1.");
@@ -611,7 +611,7 @@ void motor_1_PrintAlerts() {
  *    none
  */
 void motor_1_HandleAlerts() {
-    if (motor1.AlertReg().bit.MotorFaulted){
+    if (motor1.AlertReg().bit.MotorFaulted) {
         // if a motor fault is present, clear it by cycling enable
         Serial.println("Motor 1: Faults present. Cycling enable signal to motor to clear faults.");
         motor1.EnableRequest(false);
