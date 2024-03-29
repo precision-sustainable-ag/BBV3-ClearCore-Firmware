@@ -1,6 +1,6 @@
 # Description for Firmware program v0.1 for BBv3.
 
-28 Mar 2024
+29 Mar 2024
 
 This is probably the most stable version, currently flashed on the semi-field setup at HFL.
 
