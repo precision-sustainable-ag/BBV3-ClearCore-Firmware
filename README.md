@@ -67,7 +67,7 @@ These four limit sensors are controlled "automatically" by ClearCore at a lower 
 When any of the limit sensors is reached, the associated with the axis motor immediately stops. This functionality is implemented in the low-level ClearCore firmware flashed to ClearCore by its producer. This functionality is already built-in in ClearCore and is not implemented in this program.
 But the program tracks situations where Limit sensors reached and sends messages about it via Ethernet and via an optional USB cable. For example, when on X-axis a Negative Limit sensor is reached, the program sends a UDP message 
 ```
-\nHit Negative Limit Sensor on axis X 
+Hit Negative Limit Sensor on axis X 
 ```
 together with a serial (over an optional USB cable) debug message 
 ```
