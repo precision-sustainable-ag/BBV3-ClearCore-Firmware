@@ -1,21 +1,7 @@
-// 30 Jan 2024 ver. 0.11 : An attempt to clarify the situation with Positive/Negative direction on X-axis, also Z-axis. Checking everything from scratch. 
-// This works (ver. 0.10): sending back only one feedback message when we send to ClearCore a movement for 2 motors in one command, like "X:1000 Z:3000".
-// ip address of ClearCore is now 10.95.76.21
-
-// 12 Jan 2024 ver. 0.08 : an attempt to implement Homing on X and Z axises
-// Homing logic. On Z axis "Home" is the leftmost position without activating NegLimit sensor. We go left (negative direction) until we hit NegLimit sensor. Next we go right (positive direction) until NegLimit sensor becomes not active. Done when reached the leftmost position with NO active NegLimit sensor. Home position is reached.  
-// On Z-axis, "Home" position is when the carriage is in the upmost position.
-
-// To control two motors, please, send a UDP packet to 10.95.76.21, port 8888.
-// in Linux can use netcat: "nc -u 10.95.76.21 8888"
-// Message format: X:number Z:number, number is an integet, can be negative
-// Opposite order also works: Z:number X:number
-// 0-th motor controls X-axis (horiz.), 1-st motor controls Z-axis (vertical)
-
-/*Links:
- * ** ClearCore Documentation: https://teknic-inc.github.io/ClearCore-library/
- * ** ClearCore Manual: https://www.teknic.com/files/downloads/clearcore_user_manual.pdf
- */
+// 29 Mar 2024   BenchBot v3 ClearCore firmware_v0.1.1
+// Sends a UDP response when movements are finished.
+// This ver is close to being stable, but requires more testing with hardware
+// Possibly, it has some bugs (saving old distances over cycles).
 
 #include <Ethernet.h>  // needed only for Ethernet
 #include "ClearCore.h" // needed only for Motor control
@@ -23,14 +9,11 @@
 // --------- Ethernet block ---------
 // Change the MAC address and IP address below to match your ClearCore's
 // MAC address and IP.
-// !!! Insert MAC-addr of an actual ClearCore unit
-//byte mac[] = {0xAA, 0xBB, 0xCC, 0x00, 0x00, 0x01};
 
-// !!! Test this  
-//byte mac[] = {0x24, 0x15, 0x10, 0xb0, 0x33, 0x65};  // First BenchBot
+//byte mac[] = {0x24, 0x15, 0x10, 0xb0, 0x33, 0x65};  // First BenchBot, in HFL
 byte mac[] = {0x24, 0x15, 0x10, 0xb0, 0x31, 0xc0};  // Second BenchBot
 
-IPAddress ip(10, 95, 76, 21);  //10.95.76.21
+IPAddress ip(10, 95, 76, 21);  // IP-address 10.95.76.21
 
 // The local port to listen for connections on.
 unsigned int localPort = 8888;
@@ -42,6 +25,7 @@ char packetReceived[MAX_PACKET_LENGTH];
 
 // An EthernetUDP instance to let us send and receive packets over UDP
 EthernetUDP Udp;
+
 // Set this false if not using DHCP to configure the local IP address.
 bool usingDhcp = false; // in BenchBot v3 we don't use DHCP, use static IP
 // --------- end of Ethernet block ---------
@@ -50,19 +34,22 @@ bool usingDhcp = false; // in BenchBot v3 we don't use DHCP, use static IP
 // --------- Motor Control block ---------
 // Specifies what motor to move.
 // Options are: ConnectorM0, ConnectorM1, ConnectorM2, or ConnectorM3.
-#define motor0 ConnectorM0  // X-axis
-#define motor1 ConnectorM1  // Z-axis
+#define motor0 ConnectorM0  // for X-axis
+#define motor1 ConnectorM1  // for Z-axis
 
 // Select the baud rate to match the target serial device
 // Speed in bps for serial-over-USB cable connection
 #define baudRate 9600
 
-// This example has built-in functionality to automatically clear motor alerts, 
-//  including motor shutdowns. Any uncleared alert will cancel and disallow motion.
-// WARNING: enabling automatic alert handling will clear alerts immediately when encountered and return a motor to a state in which motion is allowed. Before enabling this functionality, be sure to understand this behavior and ensure your system will not enter an unsafe state. 
+// This example has built-in functionality to automatically clear motor alerts, including motor shutdowns. Any uncleared alert will cancel and disallow motion.
+// WARNING: enabling automatic alert handling will clear alerts immediately 
+// when encountered and return a motor to a state in which motion is allowed. 
+// Before enabling this functionality, be sure to understand this behavior and 
+// ensure your system will not enter an unsafe state. 
 // To enable automatic alert handling, #define HANDLE_ALERTS (1)
 // To disable automatic alert handling, #define HANDLE_ALERTS (0)
-#define HANDLE_ALERTS (1) // in original sketch HANDLE_ALERTS was (0)
+#define HANDLE_ALERTS (1) // in original sketch "MovePositionRelative" by 
+// Teknic, the value of HANDLE_ALERTS was (0)
 
 // Define the velocity and acceleration limits to be used for each move
 // speed of 10000 is too high for Z-axis motor (Z-axis motor takes up to 5000 pulses per sec) 
@@ -77,18 +64,15 @@ int homing_step = 10; // Step size for the Homing function, was 5
 int32_t dist_X = 0;
 int32_t dist_Z = 0;
 
-int X_axis_negative_is_left_Flag = 1; // 1 when we can see rear side of Motor
-                                      // 0 when we can see shaft of Motor
-
-int X_NegLimitFlag = 0;  // flag = 1 while NegLimit sensor is reached
+int X_NegLimitFlag = 0;  // flag == 1 while NegLimit sensor is reached
 int X_PosLimitFlag = 0;
 int Z_NegLimitFlag = 0;
 int Z_PosLimitFlag = 0;
 
-int X_MovingFlag = 0;
-int Z_MovingFlag = 0;
+int X_MovingFlag = 0; // flag to state X-axis is moving
+int Z_MovingFlag = 0; // flag to state Z-axis is moving
 
-int CarrMovingFlag = 0;
+int CarrMovingFlag = 0; // 1 when X- or Z-axis is moving (or both)
 
 // Each Homing function uses two different Flags
 int Z_Homing_Flag = 0; //this Flag is used inside the Homing on Z-axis function 
@@ -213,32 +197,23 @@ void setup() {
 
     // Motor 1: if there is an alert, then motor_1_HandleAlerts();
     if (motor1.StatusReg().bit.AlertsPresent) {
-		    Serial.println("Motor 1: alert detected.");		
-		    motor_1_PrintAlerts();
-		    if(HANDLE_ALERTS){
-			      motor_1_HandleAlerts();
-		    } else {
-			      Serial.println("Enable automatic alert handling by setting HANDLE_ALERTS to 1.");
-		    }
-		    Serial.println("Motor 1: Enabling may not have completed as expected. Proceed with caution.");		
- 		    Serial.println();
-	  } else {
-		    Serial.println("Motor 1 is Ready");	
-	  }
+        Serial.println("Motor 1: alert detected.");		
+        motor_1_PrintAlerts();
+        if(HANDLE_ALERTS) {
+            motor_1_HandleAlerts();
+        } else {
+            Serial.println("Enable automatic alert handling by setting HANDLE_ALERTS to 1.");
+        }
+        Serial.println("Motor 1: Enabling may not have completed as expected. Proceed with caution.");
+        Serial.println();
+    } else {
+        Serial.println("Motor 1 is Ready");	
+    }
+    // --------- end of Motor Control block ---------
 
-  // --------- end of Motor Control block ---------
 
-  // Setting Negative and Positive end Sensors for X and Z axises
-  // EXAMPLE. Return The pin representing the digital output connector configured to be this motor's positive limit, or CLEARCORE_PIN_INVALID if no such connector has been configured.
-    //if (ConnectorM0.LimitSwitchNeg(CLEARCORE_PIN_IO2)) {
-        //// M-0's negative limit switch is now set to IO-2 and enabled.
-    //} // Returns: True if the negative limit switch was successfully set and enabled
-    //if (ConnectorM0.LimitSwitchNeg(CLEARCORE_PIN_INVALID)) {
-        //// M-0's negative limit switch is now disabled.
-    //} // Returns: True if the negative limit switch was successfully disabled; false if a pin other than CLEARCORE_PIN_INVALID was supplied that isn't a valid digital input pin.
-    //ConnectorM0.LimitSwitchNeg(CLEARCORE_PIN_IO0);
-
-    // port I/O-0 = NegLimit for X-axis (motor 0)
+    // Setting Negative and Positive Limit Sensors for X- and Z-axes
+    // Set Negative Limit switch for Motor 0 (X-axis)
     if (ConnectorM0.LimitSwitchNeg(CLEARCORE_PIN_IO0)) {
         // M-0's negative limit switch is now set to IO-0 and enabled.
         Serial.println("I/O-0 is now set to Negative Sensor for ConnectorM0 and enabled");	
@@ -258,84 +233,101 @@ void setup() {
         // M-1's positive limit switch is now set to IO-3 and enabled.
         Serial.println("I/O-3 is now set to Positive Sensor for ConnectorM1 and enabled");
     }
-  delay(500); // this delay is needed to give time to ClearCore for assigning proper values to Registers (it could be 250+ ms)
+    delay(300); // this delay is needed to give ClearCore the time for
+    // assigning values to the Registers (could be 250+ ms)
 } // END of setup() loop
 
 
 // this loop in executed all the time, after executing the setup() loop
 void loop() {    // Put your main code here, it will run repeatedly:
     /************************ Reading Motor Register ************************/
-    // Can we move these two lines to setup loop ? - check in the last turn !
     MotorDriver *motor_0 = &ConnectorM0; // X-axis
     MotorDriver *motor_1 = &ConnectorM1; // Z-axis
     // A variable should be declared volatile whenever its value can be changed by something beyond the control of the code section in which it appears
 
-    //Serial.print("AtTargetPosition:  ");
-    //Serial.println(motor1.StatusReg().bit.AtTargetPosition);
+    // motor_0 is instance of MotorDriver, motor0 is just "ConnectorM0" 
+    // scope of statusReg_0 and statusReg_1 is only the main loop()
+    //volatile const MotorDriver::StatusRegMotor &statusReg_0 = motor_0->StatusReg();
+    //volatile const MotorDriver::StatusRegMotor &statusReg_1 = motor_1->StatusReg();
+    
+    // An example of how to read the Motor Registers
+    // (motor0.StatusReg().bit.InNegativeLimit == 1)
 
-    //int32_t dist_X = 0;
-    //int32_t dist_Z = 0;
+// -------------- Sending UDP response when movements are finished -------------
+    // This if block tracks the state of the carriage: is it moving or not.
+    // if any of two motors is moving, or both are moving
+    // if ((X is moving OR Z is moving) AND CarrMovingFlag == 0) 
+    if ( ( (motor0.StatusReg().bit.AtTargetPosition == 0) || (motor1.StatusReg().bit.AtTargetPosition == 0) ) && (CarrMovingFlag == 0) ) {
+        // then we set the CarrMovingFlag to 1. Means, some movement is being done.
+        CarrMovingFlag = 1; // X or Z is moving, set this Flag to 1
+        // some movement has started = some movement is being done
+        //Serial.print("Some movement has started, CarrMovingFlag = "); // debug
+        //Serial.println(CarrMovingFlag); // debug
+    } 
 
-// If movement for only one axis is received, we use the current code (2 if-else statements)
-// When we have a movement for two axises, we go another way (possibly, a Flag) 
+    // This block sends a UDP message, when movements are finished.
+    // Particularly, in case when there was a moving, but now both motors stopped.
+    // if (X is not moving AND Z is not moving AND CarrMovingFlag == 1)
+    if ( (motor0.StatusReg().bit.AtTargetPosition == 1) && (motor1.StatusReg().bit.AtTargetPosition == 1) && (CarrMovingFlag == 1) ) {
+        // then we have finished all movements
+        CarrMovingFlag = 0;
+        // send an UDP message that all movements were finished
+        Serial.print("All movements have finished, CarrMovingFlag = "); // for debug
+        Serial.println(CarrMovingFlag);   // for debug
 
-// This block peforms sending back of a packet when all the movementes are done.
-// if any of two motors is moving, or both are moving
-if ( ( (motor0.StatusReg().bit.AtTargetPosition == 0) || (motor1.StatusReg().bit.AtTargetPosition == 0) ) && (CarrMovingFlag == 0) ) {
-  CarrMovingFlag = 1;
-  // some movement has started
-  Serial.print("Some movement has started, CarrMovingFlag = ");
-  Serial.println(CarrMovingFlag);
-} 
-// when something was moving, but now both motors stopped
-if ( (motor0.StatusReg().bit.AtTargetPosition == 1) && (motor1.StatusReg().bit.AtTargetPosition == 1) && (CarrMovingFlag == 1) ) {
-  CarrMovingFlag = 0;
-  // send an UDP message that any movement finished
-  Serial.print("All movements have finished, CarrMovingFlag = ");
-  Serial.println(CarrMovingFlag);
+        // Sending a response about finishing all movements
+        Udp.beginPacket(Udp.remoteIP(), Udp.remotePort());
 
-  Udp.beginPacket(Udp.remoteIP(), Udp.remotePort());
-  if (dist_X == 0) { 
-    // movement was ONLY on Z-axis
-    Serial.print("Movement was only on Z-axis");
-    // send UDP message
-    Udp.write("\nAll movements have finished, Z-axis covered distance = ");
-    char Z_axis_char[8];                        // these two line is just 
-    Udp.write(itoa(dist_Z, Z_axis_char, 10) );  // int-to-char convertion
-  } 
-  else { // movement was on both X-axis and Z-axis OR only on X-axis
-    if (dist_X != 0 && dist_Z != 0) {
-      // movement was on both X-axis and Z-axis
-      Serial.print("Movement was on both X-axis and Z-axis");
-      // send UDP message
-      Udp.write("\nAll movements have finished, X-axis covered distance = ");
-      char X_axis_char[8];                        // these two line is just 
-      Udp.write(itoa(dist_X, X_axis_char, 10) );  // int-to-char convertion
-      Udp.write(", Z-axis covered distance = ");
-      char Z_axis_char[8];                        // these two line is just 
-      Udp.write(itoa(dist_Z, Z_axis_char, 10) );  // int-to-char convertion
-    } else { 
-      // movement was ONLY on X-axis
-      Serial.print("Movement was only on X-axis");
-      // send UDP message
-      Udp.write("\nAll movements have finished, X-axis covered distance = ");
-      char X_axis_char[8];                        // these two line is just 
-      Udp.write(itoa(dist_X, X_axis_char, 10) );  // int-to-char convertion
-    }
-  }
+        // CHECK !!!!!!!!!!!!!!!!!!!!!!!
+        // A possible bug is here, in next movement cycle we can have old dist values
+        // when moving only X, dist_Z may stay from the prev. move, not 0 !
   
-  Udp.endPacket();
-}
+        // 3 cases: 1) moved only Z, 2) moved X and Z, 3) moved only X
+        if (dist_X == 0) {    // 1st case: moved only Z
+            // movement was ONLY on Z-axis
+            Serial.print("Movement was only on Z-axis"); 
+            // send UDP message
+            Udp.write("\nAll movements have finished, Z-axis covered distance = ");
+    
+            char Z_axis_char[8];   // these two line is just int-to-char convertion
+            Udp.write(itoa(dist_Z, Z_axis_char, 10) );  // and sending a UDP msg 
+        } 
+        else { // 2nd case: moved both X-axis and Z-axis OR only X-axis
+            if (dist_X != 0 && dist_Z != 0) {
+                // movement was on both X-axis and Z-axis
+                Serial.print("Movement was on both X- and Z-axes"); 
+                // send UDP message
+                Udp.write("\nAll movements have finished, X-axis covered distance = ");
+                char X_axis_char[8];   // these two line is just int-to-char convertion 
+                Udp.write(itoa(dist_X, X_axis_char, 10) );  // and sending a UDP msg
+                Udp.write(", Z-axis covered distance = ");
+                char Z_axis_char[8];   // these two line is just int-to-char convertion 
+                Udp.write(itoa(dist_Z, Z_axis_char, 10) );  // and sending a UDP msg
+            } else { 
+                // 3rd case: moved ONLY X-axis
+                Serial.print("Movement was only on X-axis"); 
+                // send UDP message
+                Udp.write("\nAll movements have finished, X-axis covered distance = ");
+                char X_axis_char[8];  // these two line is just int-to-char convertion 
+                Udp.write(itoa(dist_X, X_axis_char, 10) );  // and sending a UDP msg
+            }
+        }
+ 
+        Udp.endPacket();
+    }
+// -------------- END Sending UDP response when movements are finished ---------
 
     
-// -------------- Processing of Limit Sensors encountering ---------------------
-    //  X-axis: when hit the InNegativeLimit Sensor, send a message once
+// -------------- Sending UDP msg when Limit Sensors reached -------------------
+    // X-axis: when reach the InNegativeLimit Sensor, send a message once
+    // if (NegLimit == reached AND X_NegLimitFlag == 0)
     if ((motor0.StatusReg().bit.InNegativeLimit == 1) && (X_NegLimitFlag == 0)) {
         Serial.print("InNegativeLimit:  ");
         Serial.println(motor0.StatusReg().bit.InNegativeLimit);
-        X_NegLimitFlag = 1;
+        X_NegLimitFlag = 1; // set flag to show X Neg Limit is reached 
         Serial.print("X_NegLimitFlag:  "); 
         Serial.println(X_NegLimitFlag);
+        // send a UDP message about reaching Negative Limit on X-axis
         Udp.beginPacket(Udp.remoteIP(), Udp.remotePort());
         Udp.write("\nWARNING! Hit Negative Limit Sensor on axis X");
         Udp.endPacket();        
@@ -343,19 +335,20 @@ if ( (motor0.StatusReg().bit.AtTargetPosition == 1) && (motor1.StatusReg().bit.A
     // setting Flag back to 0 when NegativeLimit Sensor is not active any more
     if ((motor0.StatusReg().bit.InNegativeLimit == 0) && (X_NegLimitFlag == 1)) {
         X_NegLimitFlag = 0;
-        Serial.print("We moved out from the Negative Limit Sensor");
+        Serial.print("X-axis: moved out from the Negative Limit Sensor");
         Serial.print("X_NegLimitFlag: "); 
         Serial.println(X_NegLimitFlag);
     }
 
-    //  X-axis: when hit the InPositiveLimit Sensor, send a message once
+    // X-axis: when reach the InPositiveLimit Sensor, send a message once
+    // if (PosLimit == reached AND X_PosLimitFlag == 0)
     if ((motor0.StatusReg().bit.InPositiveLimit == 1) && (X_PosLimitFlag == 0)) {
         Serial.print("InPositiveLimit:  ");
         Serial.println(motor0.StatusReg().bit.InPositiveLimit);
         X_PosLimitFlag = 1;
         Serial.print("X_PosLimitFlag:  "); 
         Serial.println(X_PosLimitFlag);
-
+        // send a UDP message about reaching Positive Limit on X-axis
         Udp.beginPacket(Udp.remoteIP(), Udp.remotePort());
         Udp.write("\nWARNING! Hit Positive Limit Sensor on axis X");
         Udp.endPacket();        
@@ -363,48 +356,53 @@ if ( (motor0.StatusReg().bit.AtTargetPosition == 1) && (motor1.StatusReg().bit.A
     // setting Flag back to 0 when PositiveLimit Sensor is not active any more
     if ((motor0.StatusReg().bit.InPositiveLimit == 0) && (X_PosLimitFlag == 1)) {
         X_PosLimitFlag = 0;
-        Serial.print("We moved out from the Positive Limit Sensor");
+        Serial.print("X-axis: moved out out from the Positive Limit Sensor");
         Serial.print("X_PosLimitFlag: "); 
         Serial.println(X_PosLimitFlag);
     }
 
 
-    //  Z-axis: when hit the InNegativeLimit Sensor, send a message once
+    // Z-axis: when reach the InNegativeLimit Sensor, send a message once
+    // if (NegLimit == reached AND Z_NegLimitFlag == 0)
     if ((motor1.StatusReg().bit.InNegativeLimit == 1) && (Z_NegLimitFlag == 0)) {
         Serial.print("InNegativeLimit:  ");
         Serial.println(motor1.StatusReg().bit.InNegativeLimit);
         Z_NegLimitFlag = 1;
         Serial.print("Z_NegLimitFlag:  "); 
         Serial.println(Z_NegLimitFlag);
+        // send a UDP message about reaching Negative Limit on Z-axis
         Udp.beginPacket(Udp.remoteIP(), Udp.remotePort());
         Udp.write("\nWARNING! Hit Negative Limit Sensor on axis Z");
         Udp.endPacket();        
     } // setting Flag back to 0 when NegativeLimit Sensor is not active any more
     if ((motor1.StatusReg().bit.InNegativeLimit == 0) && (Z_NegLimitFlag == 1)) {
         Z_NegLimitFlag = 0;
-        Serial.print("We moved out from the Negative Limit Sensor");
+        Serial.print("Z-axis: moved out from the Negative Limit Sensor");
         Serial.print("Z_NegLimitFlag: "); 
         Serial.println(Z_NegLimitFlag);
     }
 
     //  Z-axis: when hit the InPositiveLimit Sensor, send a message once
+    // if (PosLimit == reached AND Z_PosLimitFlag == 0)
     if ((motor1.StatusReg().bit.InPositiveLimit == 1) && (Z_PosLimitFlag == 0)) {
         Serial.print("InPositiveLimit:  ");
         Serial.println(motor1.StatusReg().bit.InPositiveLimit);
         Z_PosLimitFlag = 1;
         Serial.print("Z_PosLimitFlag:  "); 
         Serial.println(Z_PosLimitFlag);
-
+        // send a UDP message about reaching Positive Limit on Z-axis
         Udp.beginPacket(Udp.remoteIP(), Udp.remotePort());
         Udp.write("\nWARNING! Hit Positive Limit Sensor on axis Z");
         Udp.endPacket();        
     } // setting Flag back to 0 when PositiveLimit Sensor is not active any more
     if ((motor1.StatusReg().bit.InPositiveLimit == 0) && (Z_PosLimitFlag == 1)) {
         Z_PosLimitFlag = 0;
-        Serial.print("We moved out from the Positive Limit Sensor");
+        Serial.print("Z-axis: moved out from the Positive Limit Sensor"); // add Axis
         Serial.print("Z_PosLimitFlag: "); 
         Serial.println(Z_PosLimitFlag);
     }
+// -------------- END Sending UDP msg when Limit Sensors reached ---------------
+
 
     // Look for a received packet.
     int packetSize = Udp.parsePacket();
@@ -436,22 +434,10 @@ if ( (motor0.StatusReg().bit.AtTargetPosition == 1) && (motor1.StatusReg().bit.A
         // we would normally use Serial.write()
         Serial.write(packetReceived, bytesRead); // Serial.write(buf, len)
         Serial.println();
-        
-        /* // for debug purposes
-        // Here we do motor control
-        Serial.print("packetReceived[0] and packetReceived[1]: ");
-        Serial.print(packetReceived[0]);
-        Serial.print(packetReceived[1]);
-        // int32_t dist is signed (can have negative value)
-        int32_t dist = atol(packetReceived);
-        Serial.print("\natol dist value: ");
-        Serial.print(dist);
-        Serial.println(); */
-
-        
-        Serial.print("\n  bytesRead value: ");
-        Serial.print(bytesRead);
-        Serial.print("\n");
+                  
+        //Serial.print("\n  bytesRead value: "); // for debug
+        //Serial.print(bytesRead);               // for debug
+        //Serial.print("\n");                    // for debug
         int i = 0;
         while (i <= bytesRead) {
             Serial.println((String)"packetReceived[" + i + "]: " + packetReceived[i]);
@@ -464,17 +450,16 @@ if ( (motor0.StatusReg().bit.AtTargetPosition == 1) && (motor1.StatusReg().bit.A
                 // while (not space symbol OR end of char array symbol)
                 while ( (packetReceived[t + i + 2] != ' ') && (packetReceived[t + i + 2] != '\0')) {
                     temp_str[t] = packetReceived[t + i + 2];
-                    //Serial.print("\nvalue of t: "); Serial.print(t);  //debug
+                    //Serial.print("\nvalue of t: "); Serial.print(t); // debug
                     t++;
                 }
                 temp_str[t] = '\0'; // put '\0' at the end char array
                 Serial.print("\nFull X string: ");
-                Serial.write(temp_str, strlen(temp_str));
+                Serial.write(temp_str, strlen(temp_str)); 
                 Serial.println();
                 //Serial.println((String)"temp_str:" + temp_str); // for debug
                 dist_X = atol(temp_str); // transform char array to integer
             } 
-            
             // retrieving Z distance:
             if ( (packetReceived[i] == 'Z') && (packetReceived[i+1] == ':') ) {
                 Serial.print("Received 'Z:'");
@@ -490,18 +475,16 @@ if ( (motor0.StatusReg().bit.AtTargetPosition == 1) && (motor1.StatusReg().bit.A
                 Serial.print("\nFull Z string: ");
                 Serial.write(temp_str, strlen(temp_str)); 
                 Serial.println();
-                //Serial.println((String)"temp_str:" + temp_str); // for debug
+                //Serial.println((String)"temp_str:" + temp_str);
                 dist_Z = atol(temp_str); // transform char array to integer
             } 
            
-            i++;  
+            i++;    
         }
         // for debug purposes
         //Serial.println((String)"Integer dist_X: " + dist_X);
         //Serial.println((String)"Integer dist_Z: " + dist_Z);
-
         
-
 
         // !!! Feb-2, this block is UNTESTED
         // An attempt to implement Homing on X and Z-axises
@@ -520,11 +503,12 @@ if ( (motor0.StatusReg().bit.AtTargetPosition == 1) && (motor1.StatusReg().bit.A
         } 
 
 
-        // Sending back reply packet back to the sender.
+        // Sending a UDP message back to the sender
+        // with the retrieved X and Z distances
         Udp.beginPacket(Udp.remoteIP(), Udp.remotePort());
         Udp.write("Received X:");
-        char X_dist_char[8];   // these two line is just int-to-char convertion
-        Udp.write(itoa(dist_X, X_dist_char, 10) );  // and sending a UDP msg
+        char X_dist_char[8];                      // these two line is just 
+        Udp.write(itoa(dist_X, X_dist_char, 10) );  // int-to-char convertion
         Udp.write(" Received Z:");
         char Z_dist_char[8];   // these two line is just int-to-char convertion
         Udp.write(itoa(dist_Z, Z_dist_char, 10) );  // and sending a UDP msg
@@ -546,7 +530,6 @@ if ( (motor0.StatusReg().bit.AtTargetPosition == 1) && (motor1.StatusReg().bit.A
 
 
 // Functions, needed for control of Motor 0 and Motor 1
-
 //--------------------------- Motor 0 Beginning ------------------------------- 
 bool motor_0_MoveDistance(int distance) {
 // Check if a motor0 alert is currently preventing motion
@@ -580,7 +563,6 @@ bool motor_0_MoveDistance(int distance) {
             Serial.println("Motor 0: Waiting for HLFB to assert");
             lastStatusTime = millis();
         }
-
         // Check if motor alert occurred during move
         // Clear alert if configured to do so 
         if (motor0.StatusReg().bit.AlertsPresent) {
@@ -603,8 +585,8 @@ bool motor_0_MoveDistance(int distance) {
     }
 }
 
-
-/* PrintAlerts
+/*
+ * PrintAlerts
  *
  *    Prints active alerts.
  *
@@ -631,7 +613,6 @@ void motor_0_PrintAlerts() {
         Serial.println("    MotorFaulted ");
     }
 }
-
 
 /*
  * HandleAlerts
@@ -716,7 +697,6 @@ bool motor_1_MoveDistance(int distance) {
     }
 }
 
-
 /*
  * PrintAlerts
  *
@@ -746,7 +726,6 @@ void motor_1_PrintAlerts() {
     }
 }
 
-
 /*
  * HandleAlerts
  *
@@ -775,61 +754,70 @@ void motor_1_HandleAlerts() {
 //--------------------------- Motor 1 End --------------------------------------
 
 
-
 // Homing for Z-axis. Works.
 int Homing_Z_axis() {
-    Serial.print("Beginning of function Homing_Z_axis(). Z_HomingDoneFlag = ");
-    Serial.println(Z_HomingDoneFlag);
-    //motor1.VelMax(Homing_velocityLimit); //slow down to 1Homing_velocityLimit
+    //Serial.print("Beginning of function Homing_Z_axis(). Z_HomingDoneFlag = ");   // for debug
+    //Serial.println(Z_HomingDoneFlag); // for debug
+
+    // while Homing is not finished
     while (Z_HomingDoneFlag != 1 ) {
-        if (motor1.StatusReg().bit.InNegativeLimit == 1) {  // 2 cases: NO_Flag or Flag
+        // if reached Negative Limit Sensor
+        if (motor1.StatusReg().bit.InNegativeLimit == 1) {  
+        // 2 cases: Z_Homing_Flag == 0 or Z_Homing_Flag == 1
             
-            Serial.print("motor1.StatusReg().bit.InNegativeLimit:  "); // temp-5
-            Serial.println(motor1.StatusReg().bit.InNegativeLimit);    // temp-5
+            // for debug
+            Serial.print("motor1.StatusReg().bit.InNegativeLimit:  "); 
+            Serial.println(motor1.StatusReg().bit.InNegativeLimit); 
 
             // 1st case: if Z_Homing_Flag is 0, we set it to 1 and start Homing
             if (Z_Homing_Flag == 0) { 
-                Z_Homing_Flag = 1; // set Flag=1, we just starting going positive dir
+                Z_Homing_Flag = 1;// set Flag=1, we just starting going positive dir
                 Serial.println("Set Z_Homing_Flag = 1"); 
-                Serial.println("Z_Homing_Flag:  "); // temp-5
-                Serial.println(Z_Homing_Flag);      // temp-5
+
+                Serial.println("Z_Homing_Flag:  "); // for debug
+                Serial.println(Z_Homing_Flag);      // for debug
             }
-            // if Z_Homing_Flag is 1, we started homing earlier
+            // 2nd case: if Z_Homing_Flag is 1, we started homing earlier
             // so, we do a homing step
             else if (Z_Homing_Flag == 1) { 
-                // we're starting or continuing to go positive direction
-                // one step in positive direction
-                Serial.print("Z_Homing_Flag:  ");  // temp-5
-                Serial.println(Z_Homing_Flag);     // temp-5
-
+                // go one step in POSITIVE direction
+                //Serial.print("Z_Homing_Flag:  "); // for debug
+                //Serial.println(Z_Homing_Flag); // for debug
                 Serial.println("Moving one step to positive direction"); 
                 motor_1_MoveDistance(homing_step); //one step in POSITIVE direct
             }
         }
+
+        // when Negative Limit sensor is not reached
+        // 2 cases: moved to Neg Limit or moved away from Neg Limit sensor
         else if (Z_Homing_Flag == 1) {// NegLimit == 0 // cases: Flag or NO_Flag
+            // Z_Homing_Flag == 1, when moved away from Neg Limit sensor.
+            // Homing is Done.
             
-            Serial.print("motor1.StatusReg().bit.InNegativeLimit:  "); // temp-5
-            Serial.println(motor1.StatusReg().bit.InNegativeLimit);    // temp-5
+            // for debug
+            Serial.print("motor1.StatusReg().bit.InNegativeLimit:  "); 
+            Serial.println(motor1.StatusReg().bit.InNegativeLimit); 
 
             Z_Homing_Flag = 0; //we are done
-            // for debug
-            Serial.print("Z_Homing_Flag:  "); 
-            Serial.println(Z_Homing_Flag);
+            //Serial.print("Z_Homing_Flag:  ");   // for debug 
+            //Serial.println(Z_Homing_Flag);      // for debug
             Serial.println("Z-axis: Homing is done");
             Z_HomingDoneFlag = 1; // finished Homing
         }
         else { 
             // Z_Homing_Flag == 0, we need to move negative direction 
             // (towards the Negative Limit sensor)
-
-            Serial.print("Z_Homing_Flag:  ");   // for debug
-            Serial.println(Z_Homing_Flag);      // for debug
+            //Serial.print("Z_Homing_Flag:  ");   // for debug
+            //Serial.println(Z_Homing_Flag);      // for debug
             Serial.println("We need to move negative direction, step size:");
-            Serial.println(-homing_step); 
+            Serial.println(-homing_step);
 
-            motor_1_MoveDistance(-homing_step); // go one step in negative direction
+            motor_1_MoveDistance(-homing_step); // go 1 step in negative direction
         }
-        delay(1); // This delay is very important: wihout it a ClearCore is slow with reading the Sensor state inside the while() loop. Removing this delay causes increase (around doubling) of distance from Sensor to Home position.
+        delay(1); // This delay is very important: wihout it a ClearCore
+        // is slow with reading the Sensor state inside the while() loop.
+        // Removing this delay causes doubling of the distance between 
+        // Sensor and Home position.
     }
     
     Z_HomingDoneFlag = 0;

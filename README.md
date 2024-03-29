@@ -1,13 +1,12 @@
-# Description for Firmware program v0.1 for BBv3.
+# Description for Firmware program v0.1.1 for BBv3.
 
 29 Mar 2024
 
 This is probably the most stable version, currently flashed on the semi-field setup at HFL.
 
-Firmware program v0.1 is implemented as an Arduino sketch (.ino file) and is written in a C-based programming language. This program uses the UDP protocol for communication over Ethernet. 
+Firmware program v0.1.1 is implemented as an Arduino sketch (.ino file) and is written in a C-based programming language. This program uses the UDP protocol for communication over Ethernet. 
 
 The program waits for UDP packets with incoming commands. When a message is received, it performs the commands and sends a response as a UDP packet together with some debug serial-over-USB messages via a USB cable.
-
 
 **Reading debug messages via connected USB cable**
 
@@ -43,20 +42,42 @@ unsigned int localPort = 8888;
 
 The program can independently move both motors for different distances and in different directions. In this version of the firmware program, it is expected that UDP messages for movements are sent to ClearCore with the delay needed to complete the movements. When a command to move "X:3000 Z:10000" is sent, it is expected that the next command to move (or the Homing command) will be sent after the amount of time needed to perform the move "X:3000 Z:10000".
 
+This program sends a UDP message when movements are finished. After receiving of a movement command and performing the movements, program will send a message indicating completion of the movements and covered distances. A couple of examples:
+1) Sent to ClearCore:
+```
+X:0 Z:5000
+```
+After completing the movement on Z-axis, the ClearCore sends a response:
+```
+All movements have finished, Z-axis covered distance = 5000
+```
+2) Sent to ClearCore:
+```
+X:1000 Z:3500
+```
+The moment the longest in time movement is completed, ClearCore sends a response:
+```
+All movements have finished, X-axis covered distance = 1000, Z-axis covered distance = 3500
+```
+In this way, the sender knows the moment when requested movements are finished. Also, the sender can use information about covered distances.
+
+
 The BenchBot v3 has four associated limit sensors: Negative and Positive for X-axis, Negative and Positive for Z-axis. For example, the X-axis is controlled by Motor0 and there are Negative and Positive sensors associated with Motor0 (i.e. associated with the X-axis).
 
 These four limit sensors are controlled "automatically" by ClearCore at a lower level. They are not controlled by this program. But in this program we can read the state of each of the sensors (through the Registers).
 
-When a limit sensor is reached, the associated motor immediately stops and this functionality is implemented in the low-level ClearCore firmware flashed to ClearCore by its producer. This functionality is already built-in in ClearCore and is not implemented in this program.
-
-When on X-axis (and only on X-axis!), the carriage reaches the Negative or the Positive Limit sensor, the ClearCore sends a message about reaching the Limit sensor through Ethernet UDP together with sending a debug message over an optional USB cable connected to a computer. When the carriage moves away from a Limit sensor, the ClearCore also sends a serial debug message via a USB cable.
-For example, if the Negative Limit sensor is reached, the program sends a UDP message: 
+When any of the limit sensors is reached, the associated with the axis motor immediately stops. This functionality is implemented in the low-level ClearCore firmware flashed to ClearCore by its producer. This functionality is already built-in in ClearCore and is not implemented in this program.
+But the program tracks situations where Limit sensors reached and sends messages about it via Ethernet and via an optional USB cable. For example, when on X-axis a Negative Limit sensor is reached, the program sends a UDP message 
 ```
-"\nHit Negative Limit Sensor on axis X"
+\nHit Negative Limit Sensor on axis X 
 ```
-together with a serial (over an optional USB cable) debug message: 
+together with a serial (over an optional USB cable) debug message 
 ```
-"InNegativeLimit:  "
+InNegativeLimit:   
+```
+When the camera moves away from the sensor, the program also sends a serial debug message: 
+```
+X-axis: moved out from the Negative Limit Sensor
 ```
 
 
