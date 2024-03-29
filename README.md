@@ -2,8 +2,6 @@
 
 29 Mar 2024
 
-This is probably the most stable version, currently flashed on the semi-field setup at HFL.
-
 Firmware program v0.1.1 is implemented as an Arduino sketch (.ino file) and is written in a C-based programming language. This program uses the UDP protocol for communication over Ethernet. 
 
 The program waits for UDP packets with incoming commands. When a message is received, it performs the commands and sends a response as a UDP packet together with some debug serial-over-USB messages via a USB cable.
