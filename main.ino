@@ -77,7 +77,7 @@ void motor_1_HandleAlerts();
 // --------- end of Motor Control block ---------
 
 
-// this loop in executed once, after turning on ClearCore
+// this loop in executed once, after turning ClearCore ON
 void setup() {
     // Put your setup code here, it will run once:
  
