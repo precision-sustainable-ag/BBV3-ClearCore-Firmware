@@ -158,44 +158,44 @@ void setup() {
         motor1.HlfbState() != MotorDriver::HLFB_ASSERTED &&
         !motor0.StatusReg().bit.AlertsPresent && 
         !motor1.StatusReg().bit.AlertsPresent) {
-		    // Periodically prints out why the application is waiting
+        // Periodically prints out why the application is waiting
         if (millis() - lastStatusTime > 100) {
             Serial.println("Waiting for HLFB to assert on both motors");
             lastStatusTime = millis();
         }    
-	  }
-	  // Check if motor alert occurred during enabling
-	  // Clear alert if configured to do so 
+    }
+    // Check if motor alert occurred during enabling
+    // Clear alert if configured to do so 
 
     // Motor 0: if there is an alert, then motor_0_HandleAlerts();
     if (motor0.StatusReg().bit.AlertsPresent) {
-		    Serial.println("Motor 0: alert detected.");		
-		    motor_0_PrintAlerts();
-		    if(HANDLE_ALERTS){
-			      motor_0_HandleAlerts();
-		    } else {
-			      Serial.println("Enable automatic alert handling by setting HANDLE_ALERTS to 1.");
-		    }
-		    Serial.println("Motor 0: Enabling may not have completed as expected. Proceed with caution.");		
- 		    Serial.println();
-	  } else {
-		    Serial.println("Motor 0 is Ready");	
-	  }
+        Serial.println("Motor 0: alert detected.");		
+        motor_0_PrintAlerts();
+        if(HANDLE_ALERTS){
+            motor_0_HandleAlerts();
+        } else {
+            Serial.println("Enable automatic alert handling by setting HANDLE_ALERTS to 1.");
+        }
+        Serial.println("Motor 0: Enabling may not have completed as expected. Proceed with caution.");		
+        Serial.println();
+    } else {
+        Serial.println("Motor 0 is Ready");	
+    }
 
     // Motor 1: if there is an alert, then motor_1_HandleAlerts();
     if (motor1.StatusReg().bit.AlertsPresent) {
-		    Serial.println("Motor 1: alert detected.");		
-		    motor_1_PrintAlerts();
-		    if(HANDLE_ALERTS){
-			      motor_1_HandleAlerts();
-		    } else {
-			      Serial.println("Enable automatic alert handling by setting HANDLE_ALERTS to 1.");
-		    }
-		    Serial.println("Motor 1: Enabling may not have completed as expected. Proceed with caution.");		
- 		    Serial.println();
-	  } else {
-		    Serial.println("Motor 1 is Ready");	
-	  }
+        Serial.println("Motor 1: alert detected.");		
+        motor_1_PrintAlerts();
+        if(HANDLE_ALERTS){
+            motor_1_HandleAlerts();
+        } else {
+            Serial.println("Enable automatic alert handling by setting HANDLE_ALERTS to 1.");
+        }
+        Serial.println("Motor 1: Enabling may not have completed as expected. Proceed with caution.");		
+        Serial.println();
+    } else {
+        Serial.println("Motor 1 is Ready");	
+    }
     // --------- end of Motor Control block ---------
 
 
@@ -269,7 +269,7 @@ void loop() {    // Put your main code here, it will run repeatedly:
         X_PosLimitFlag = 1;
         Serial.print("X_PosLimitFlag:  ");   // for debug 
         Serial.println(X_PosLimitFlag);   // for debug
-        
+  
         // Sending UDP message
         Udp.beginPacket(Udp.remoteIP(), Udp.remotePort());
         Udp.write("\nHit Positive Limit Sensor on axis X");
@@ -363,8 +363,8 @@ void loop() {    // Put your main code here, it will run repeatedly:
                 dist_Z = atol(temp_str); // transform char array to integer
             } 
            
-            i++;    
-	      }
+            i++;  
+        }
         // for debug purposes
         //Serial.println((String)"Integer dist_X: " + dist_X);
         //Serial.println((String)"Integer dist_Z: " + dist_Z);
@@ -402,15 +402,15 @@ bool motor_0_MoveDistance(int distance) {
 // Check if a motor0 alert is currently preventing motion
 // Clear alert if configured to do so 
     if (motor0.StatusReg().bit.AlertsPresent) {
-		    Serial.println("Motor 0 alert detected.");		
-		    motor_0_PrintAlerts();
-		    if (HANDLE_ALERTS) {
-			      motor_0_HandleAlerts();
-		    } else {
-			      Serial.println("Enable automatic alert handling by setting HANDLE_ALERTS to 1.");
-		    }
-		    Serial.println("Motor 0: Move canceled.");		
-		    Serial.println();
+        Serial.println("Motor 0 alert detected.");		
+        motor_0_PrintAlerts();
+        if (HANDLE_ALERTS) {
+            motor_0_HandleAlerts();
+        } else {
+            Serial.println("Enable automatic alert handling by setting HANDLE_ALERTS to 1.");
+        }
+        Serial.println("Motor 0: Move canceled.");		
+        Serial.println();
         return false;
     }
     Serial.print("Motor 0: Moving distance: ");
@@ -431,25 +431,25 @@ bool motor_0_MoveDistance(int distance) {
             lastStatusTime = millis();
         }
 
-	      // Check if motor alert occurred during move
-	      // Clear alert if configured to do so 
+        // Check if motor alert occurred during move
+        // Clear alert if configured to do so 
         if (motor0.StatusReg().bit.AlertsPresent) {
-		        motor0.MoveStopAbrupt();
+            motor0.MoveStopAbrupt();
             Serial.println("Motor 0: alert detected.");		
-		        motor_0_PrintAlerts();
-		        if (HANDLE_ALERTS) {
-			          motor_0_HandleAlerts();
-		        } else {
-			          Serial.println("Motor 0: Enable automatic fault handling by setting HANDLE_ALERTS to 1.");
-		        }
-		        Serial.println("Motor 0: Motion may not have completed as expected. Proceed with caution.");
-		        Serial.println();
-		        return false;
+            motor_0_PrintAlerts();
+            if (HANDLE_ALERTS) {
+                motor_0_HandleAlerts();
+            } else {
+                Serial.println("Motor 0: Enable automatic fault handling by setting HANDLE_ALERTS to 1.");
+            }
+            Serial.println("Motor 0: Motion may not have completed as expected. Proceed with caution.");
+            Serial.println();
+            return false;
         } else {
             // this message uppears before move is done
-		        Serial.println("Motor 0: Move sent to motor");
-		        return true;
-	      }
+            Serial.println("Motor 0: Move sent to motor");
+            return true;
+        }
     }
 }
 
@@ -464,23 +464,23 @@ bool motor_0_MoveDistance(int distance) {
  * Returns: 
  *    none
  */
- void motor_0_PrintAlerts() {
-	// report status of alerts on motor0
- 	Serial.println("Motor 0: Alerts present: ");
-	if(motor0.AlertReg().bit.MotionCanceledInAlert){
-		Serial.println("    MotionCanceledInAlert "); }
-	if(motor0.AlertReg().bit.MotionCanceledPositiveLimit){
-		Serial.println("    MotionCanceledPositiveLimit "); }
-	if(motor0.AlertReg().bit.MotionCanceledNegativeLimit){
-		Serial.println("    MotionCanceledNegativeLimit "); }
-	if(motor0.AlertReg().bit.MotionCanceledSensorEStop){
-		Serial.println("    MotionCanceledSensorEStop "); }
-	if(motor0.AlertReg().bit.MotionCanceledMotorDisabled){
-		Serial.println("    MotionCanceledMotorDisabled "); }
-	if(motor0.AlertReg().bit.MotorFaulted){
-		Serial.println("    MotorFaulted ");
-	}
- }
+void motor_0_PrintAlerts() {
+    // report status of alerts on motor0
+    Serial.println("Motor 0: Alerts present: ");
+    if (motor0.AlertReg().bit.MotionCanceledInAlert) {
+        Serial.println("    MotionCanceledInAlert "); }
+    if (motor0.AlertReg().bit.MotionCanceledPositiveLimit) {
+        Serial.println("    MotionCanceledPositiveLimit "); }
+    if (motor0.AlertReg().bit.MotionCanceledNegativeLimit) {
+        Serial.println("    MotionCanceledNegativeLimit "); }
+    if (motor0.AlertReg().bit.MotionCanceledSensorEStop) {
+        Serial.println("    MotionCanceledSensorEStop "); }
+    if (motor0.AlertReg().bit.MotionCanceledMotorDisabled) {
+        Serial.println("    MotionCanceledMotorDisabled "); }
+    if (motor0.AlertReg().bit.MotorFaulted){
+        Serial.println("    MotorFaulted ");
+    }
+}
 
 
 /*
@@ -496,35 +496,35 @@ bool motor_0_MoveDistance(int distance) {
  * Returns: 
  *    none
  */
- void motor_0_HandleAlerts(){
-	if(motor0.AlertReg().bit.MotorFaulted){
-		// if a motor fault is present, clear it by cycling enable
-		Serial.println("Motor 0: Faults present. Cycling enable signal to motor to clear faults.");
-		motor0.EnableRequest(false);
-		Delay_ms(10);
-		motor0.EnableRequest(true);
-	}
-	// clear alerts
-	Serial.println("Motor 0: Clearing alerts.");
-	motor0.ClearAlerts();
- }
+void motor_0_HandleAlerts() {
+    if (motor0.AlertReg().bit.MotorFaulted) {
+        // if a motor fault is present, clear it by cycling enable
+        Serial.println("Motor 0: Faults present. Cycling enable signal to motor to clear faults.");
+        motor0.EnableRequest(false);
+        Delay_ms(10);
+        motor0.EnableRequest(true);
+    }
+    // clear alerts
+    Serial.println("Motor 0: Clearing alerts.");
+    motor0.ClearAlerts();
+}
 //--------------------------- Motor 0 End --------------------------------------
 
 
 //--------------------------- Motor 1 Beginning ------------------------------- 
 bool motor_1_MoveDistance(int distance) {
-// Check if a motor1 alert is currently preventing motion
-// Clear alert if configured to do so 
+    // Check if a motor1 alert is currently preventing motion
+    // Clear alert if configured to do so 
     if (motor1.StatusReg().bit.AlertsPresent) {
-		    Serial.println("Motor 1 alert detected.");		
-		    motor_1_PrintAlerts();
-		    if (HANDLE_ALERTS) {
-			      motor_1_HandleAlerts();
-		    } else {
-			      Serial.println("Enable automatic alert handling by setting HANDLE_ALERTS to 1.");
-		    }
-		    Serial.println("Motor 1: Move canceled.");		
-		    Serial.println();
+        Serial.println("Motor 1 alert detected.");		
+        motor_1_PrintAlerts();
+        if (HANDLE_ALERTS) {
+            motor_1_HandleAlerts();
+        } else {
+            Serial.println("Enable automatic alert handling by setting HANDLE_ALERTS to 1.");
+        }
+        Serial.println("Motor 1: Move canceled.");		
+        Serial.println();
         return false;
     }
     Serial.print("Motor 1: Moving distance: ");
@@ -545,24 +545,24 @@ bool motor_1_MoveDistance(int distance) {
             lastStatusTime = millis();
         }
 
-	      // Check if motor alert occurred during move
-	      // Clear alert if configured to do so 
+        // Check if motor alert occurred during move
+        // Clear alert if configured to do so 
         if (motor1.StatusReg().bit.AlertsPresent) {
-		        motor1.MoveStopAbrupt();
+            motor1.MoveStopAbrupt();
             Serial.println("Motor 1: alert detected.");		
-		        motor_1_PrintAlerts();
-		        if (HANDLE_ALERTS) {
-			          motor_1_HandleAlerts();
-		        } else {
-			          Serial.println("Motor 1: Enable automatic fault handling by setting HANDLE_ALERTS to 1.");
-		        }
-		        Serial.println("Motor 1: Motion may not have completed as expected. Proceed with caution.");
-		        Serial.println();
-		        return false;
+            motor_1_PrintAlerts();
+            if (HANDLE_ALERTS) {
+                motor_1_HandleAlerts();
+            } else {
+                Serial.println("Motor 1: Enable automatic fault handling by setting HANDLE_ALERTS to 1.");
+            }
+            Serial.println("Motor 1: Motion may not have completed as expected. Proceed with caution.");
+            Serial.println();
+            return false;
         } else {
-		        Serial.println("Motor 1: Move sent to motor");
-		        return true;
-	      }
+            Serial.println("Motor 1: Move sent to motor");
+            return true;
+        }
     }
 }
 
@@ -578,23 +578,23 @@ bool motor_1_MoveDistance(int distance) {
  * Returns: 
  *    none
  */
- void motor_1_PrintAlerts() {
-	// report status of alerts on motor0
- 	Serial.println("Motor 1: Alerts present: ");
-	if(motor1.AlertReg().bit.MotionCanceledInAlert){
-		Serial.println("    MotionCanceledInAlert "); }
-	if(motor1.AlertReg().bit.MotionCanceledPositiveLimit){
-		Serial.println("    MotionCanceledPositiveLimit "); }
-	if(motor1.AlertReg().bit.MotionCanceledNegativeLimit){
-		Serial.println("    MotionCanceledNegativeLimit "); }
-	if(motor1.AlertReg().bit.MotionCanceledSensorEStop){
-		Serial.println("    MotionCanceledSensorEStop "); }
-	if(motor1.AlertReg().bit.MotionCanceledMotorDisabled){
-		Serial.println("    MotionCanceledMotorDisabled "); }
-	if(motor1.AlertReg().bit.MotorFaulted){
-		Serial.println("    MotorFaulted ");
-	}
- }
+void motor_1_PrintAlerts() {
+    // report status of alerts on motor0
+    Serial.println("Motor 1: Alerts present: ");
+    if (motor1.AlertReg().bit.MotionCanceledInAlert) {
+        Serial.println("    MotionCanceledInAlert "); }
+    if (motor1.AlertReg().bit.MotionCanceledPositiveLimit) {
+        Serial.println("    MotionCanceledPositiveLimit "); }
+    if (motor1.AlertReg().bit.MotionCanceledNegativeLimit) {
+        Serial.println("    MotionCanceledNegativeLimit "); }
+    if (motor1.AlertReg().bit.MotionCanceledSensorEStop) {
+        Serial.println("    MotionCanceledSensorEStop "); }
+    if (motor1.AlertReg().bit.MotionCanceledMotorDisabled) {
+        Serial.println("    MotionCanceledMotorDisabled "); }
+    if (motor1.AlertReg().bit.MotorFaulted) {
+        Serial.println("    MotorFaulted ");
+    }
+}
 
 
 /*
@@ -610,18 +610,18 @@ bool motor_1_MoveDistance(int distance) {
  * Returns: 
  *    none
  */
- void motor_1_HandleAlerts(){
-	if(motor1.AlertReg().bit.MotorFaulted){
-		// if a motor fault is present, clear it by cycling enable
-		Serial.println("Motor 1: Faults present. Cycling enable signal to motor to clear faults.");
-		motor1.EnableRequest(false);
-		Delay_ms(10);
-		motor1.EnableRequest(true);
-	}
-	// clear alerts
-	Serial.println("Motor 1: Clearing alerts.");
-	motor1.ClearAlerts();
- }
+void motor_1_HandleAlerts() {
+    if (motor1.AlertReg().bit.MotorFaulted){
+        // if a motor fault is present, clear it by cycling enable
+        Serial.println("Motor 1: Faults present. Cycling enable signal to motor to clear faults.");
+        motor1.EnableRequest(false);
+        Delay_ms(10);
+        motor1.EnableRequest(true);
+    }
+    // clear alerts
+    Serial.println("Motor 1: Clearing alerts.");
+    motor1.ClearAlerts();
+}
 //--------------------------- Motor 1 End --------------------------------------
 
 
