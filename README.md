@@ -8,6 +8,7 @@ Firmware program v0.1 is implemented as an Arduino sketch (.ino file) and is wri
 
 The program waits for UDP packets with incoming commands. When a message is received, it performs the commands and sends a response as a UDP packet together with some debug serial-over-USB messages via a USB cable.
 
+
 **Reading debug messages via connected USB cable**
 
 Additionally, a user can connect their computer to ClearCore via a USB cable (serial-over-USB connection) to read debug messages and some extra information about what is going on at ClearCore. To be able to read these messages, connect ClearCore to the computer via a USB cable, in Arduino IDE (with an installed ClearCore wrapper for Arduino IDE), go to "Tools" -> "Teknic ClearCore board" and choose "Teknic ClearCore". Next, choose the COM port, connected to ClearCore: on the Arduino IDE go to "Tools" -> "Port" and choose the port with the comment "ClearCore". After that, the user can go to "Tools" -> "Serial Monitor" to see the window at the bottom of the Arduino IDE. This window will show all the serial output from ClearCore.
