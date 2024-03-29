@@ -22,7 +22,7 @@ byte mac[] = {0x24, 0x15, 0x10, 0xb0, 0x81, 0xd0};
 Here, we set the ClearCore MAC address to "24-15-10-b0-81-d0".
 
 
-**Setting IP-address and port number**
+**Setting up IP-address and port number**
 
 The ClearCore module should be set to an IP-address from the same subnetwork the BenchBot v3 system uses. To set the IP-address we use the command:
 ```
@@ -40,7 +40,7 @@ unsigned int localPort = 8888;
 
 The program can independently move both motors for different distances and in different directions. In this version of the firmware program, it is expected that UDP messages for movements are sent to ClearCore with the delay needed to complete the movements. When a command to move "X:3000 Z:10000" is sent, it is expected that the next command to move (or the Homing command) will be sent after the amount of time needed to perform the move "X:3000 Z:10000".
 
-This program sends a UDP message when movements are finished. After receiving of a movement command and performing the movements, program will send a message indicating completion of the movements and covered distances. A couple of examples:
+When movements are finished, the program sends a UDP message. After receiving a movement command and performing the movements, the program will send a message indicating completion of the movements and covered distances. A couple of examples:
 1) Sent to ClearCore:
 ```
 X:0 Z:5000
