@@ -56,7 +56,7 @@ For example, if the Negative Limit sensor is reached, the program sends a UDP me
 ```
 together with a serial (over an optional USB cable) debug message: 
 ```
-"InNegativeLimit:  ".
+"InNegativeLimit:  "
 ```
 
 
