@@ -107,6 +107,40 @@ X:999 Z:999
 Z-axis homing was implemented for testing purposes.
 
 
+**List of functions with a brief description**
+
+void setup()
+An Arduino function, called immediately of turning ClearCore on and executes one every time the device is turned on.
+
+void loop()
+An Arduino function. The main function in the program. This function starts execution immediately after the setup() function and is executed in a loop as long as the ClearCore is turned on.
+
+bool motor_0_MoveDistance(int distance)
+This function takes a distance (negative or positive integer) and moves the camera on the X-axis.
+As was mentioned before, Motor 0 is associated with the X-axis.
+Positive movement directed RIGHT, negative movement directed LEFT.
+
+void motor_0_PrintAlerts()
+An original function by Teknic from examples of sketches for ClearCore. It prints alerts for the Motor 0 (X-axis) if any of them arise.
+
+void motor_0_HandleAlerts()
+An original function by Teknic from examples of sketches for ClearCore. It resolves alerts for Motor 0 (X-axis), when any of them arises.
+
+bool motor_1_MoveDistance(int distance)
+This function takes a distance (negative or positive integer) and moves the camera on the Z-axis.
+As was mentioned before, Motor 1 is associated with the Z-axis.
+Positive movement directed UP, negative movement directed DOWN.
+
+void motor_1_PrintAlerts()
+An original function by Teknic from examples of sketches for ClearCore. It prints alerts for the Motor 1 (Z-axis) if any of them arise.
+
+void motor_1_HandleAlerts()
+An original function by Teknic from examples of sketches for ClearCore. It resolves alerts for Motor 1 (Z-axis), when any of them arises.
+
+int Homing_Z_axis()
+This function performs homing for Z-axis. Was tested, works.
+
+
 **ClearCore Documentation**
 
 ClearCore is an industrial I/O and motion controller. Made by "Teknic", the producer of the ClearPath motors which are used in BenchBot v3 for X- and Z-axes.
