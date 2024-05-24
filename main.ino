@@ -1,19 +1,18 @@
-#include <Ethernet.h>   // Ethernet
-#include "ClearCore.h"  // Motor control
-
-// Ethernet
-//byte mac[] = {0x24, 0x15, 0x10, 0xb0, 0x33, 0x65};  // First BenchBot, in HFL
-byte mac[] = {0x24, 0x15, 0x10, 0xb0, 0x31, 0xc0};  // Second BenchBot
-IPAddress ip(10, 95, 76, 21);  // IP-address 10.95.76.21
-unsigned int localPort = 8888; // port to listen for connections
-#define MAX_PACKET_LENGTH 100  // max size for incoming packet, characters  
+#include <ArduinoJson.h> // JSON library (used v7.0.4)
+#include <Ethernet.h>    // Ethernet
+#include "ClearCore.h"   // Motor control
+// Ethernet 
+//byte mac[] = {0x24, 0x15, 0x10, 0xb0, 0x33, 0x65};  // First BenchBot, in HFL 
+byte mac[] = {0x24, 0x15, 0x10, 0xb0, 0x31, 0xc0};  // Second BenchBot 
+IPAddress ip(10, 95, 76, 21);  // set IP-address 10.95.76.21 
+unsigned int localPort = 8888; // port to listen for UDP packets 
+#define MAX_PACKET_LENGTH 100  // max size for incoming packet, characters 
 char packetReceived[MAX_PACKET_LENGTH]; // buffer for received packets
 EthernetUDP Udp; // EthernetUDP instance to send/receive packets over UDP
-
-// Motors 
+// Motor connectors 
 #define motor0 ConnectorM0  // for X-axis
 #define motor1 ConnectorM1  // for Z-axis
-#define HANDLE_ALERTS (1)   // 1 = Enabled, 0 = Disabled
+#define HANDLE_ALERTS (1)   // ClearPath motor error handling: 1 = Enabled, 0 = Disabled
 // define ClearPath motors velocity and acceleration limits 
 int velocityLimit = 3000; // pulses per sec, 5000 is max for vertical Z-axis
 int accelerationLimit = 30000; // pulses per sec^2
@@ -44,8 +43,7 @@ byte X_Homing_Flag = 0; // 1 starting the moment when sensor is reached
 byte X_HomingDoneFlag = 0; // 1 when homing on X-axis is done
 byte Z_Homing_Flag = 0; // 1 starting the moment when sensor is reached 
 byte Z_HomingDoneFlag = 0; // 1 when homing on Z-axis is done
-int parser_buff_size = 100; // parser buffer size
-// BBv3 functions
+// BenchBot functions
 void send_UDP_msg(char msg[]); // function for sending UDP messages
 void Homing_X_axis(); // homing for X-axis 
 void Homing_Z_axis(); // homing for Z-axis
@@ -147,50 +145,46 @@ void loop() {
   // motor_0 is instance of MotorDriver, motor0 is synonym to "ConnectorM0"
   MotorDriver *motor_0 = &ConnectorM0; // set motor for X-axis
   MotorDriver *motor_1 = &ConnectorM1; // set motor for Z-axis
-// -------------- Send UDP response when movements are finished -------------
+// -------------- Sending UDP response when movements are finished -------------
+  // this block has only one primary reason: to send UDP 
+  // message when all the movements are finished
   // AtTargetPosition = 0 when moving, AtTargetPosition = 1 when not moving
   // Check if any of two motors is moving, or both are moving
   if ( ( (motor0.StatusReg().bit.AtTargetPosition == 0) || (motor1.StatusReg().bit.AtTargetPosition == 0) ) && (CarrMovingFlag == 0) ) {
-    CarrMovingFlag = 1; // set 1, as X and/or Z is moving
+    CarrMovingFlag = 1; // set flag to 1, as X and/or Z is moving
   } 
-  // Send UDP msg when there was movement, but now both motors stopped
+  // Send UDP msg if there was movement, but now both motors stopped
   if ( (motor0.StatusReg().bit.AtTargetPosition == 1) && (motor1.StatusReg().bit.AtTargetPosition == 1) && (CarrMovingFlag == 1) ) {
-    CarrMovingFlag = 0; // set 0, all movements are finished 
+    CarrMovingFlag = 0; // set flag to 0 as all movements are finished 
     Serial.print("\nAll movements are finished"); 
-    Udp.beginPacket(Udp.remoteIP(), Udp.remotePort());
     // 3 cases: 1) moved only Z, 2) moved X and Z, 3) moved only X
     if (dist_X == 0) {  // 1st case: movement was ONLY on Z-axis 
-      Serial.print("\nMovement was only on Z-axis");
-      Udp.write("\nAll movements are finished, Z-axis covered distance = ");
-      char Z_axis_char[8]; 
-      // convert int to char and send a UDP message
-      Udp.write(itoa(dist_Z, Z_axis_char, MAX_DIST_LEN));
+      Serial.print("\nMovement was only on Z-axis, covered dist = ");
+      Serial.print(dist_Z);
+      send_UDP_msg("{\"movement\":\"finished\",\"axis\":\"z\"}"); 
     } else {  // 2nd case: movement was on both X- and Z-axes
       if (dist_X != 0 && dist_Z != 0) { 
-        Serial.print("\nMovement was on both X-axis and Z-axis");
-        Udp.write("\nAll movements have finished, X-axis covered distance = ");
-        char X_axis_char[8];
-        Udp.write(itoa(dist_X, X_axis_char, MAX_DIST_LEN));
-        Udp.write(", Z-axis covered distance = ");
-        char Z_axis_char[8]; 
-        Udp.write(itoa(dist_Z, Z_axis_char, MAX_DIST_LEN));
-      } else {  // 3rd case: moved ONLY X-axis
-        Serial.print("\nMovement was only on X-axis");
-        Udp.write("\nAll movements have finished, X-axis covered distance = ");
-        char X_axis_char[8];
-        Udp.write(itoa(dist_X, X_axis_char, MAX_DIST_LEN));
+        Serial.print("\nMovement was on both X- and Z-axes. X-covered dist = "); 
+        Serial.print(dist_X); 
+        Serial.print(" , Z-covered dist = "); 
+        Serial.print(dist_Z); 
+        send_UDP_msg("{\"movement\":\"finished\",\"axis\":\"x\"}");
+        send_UDP_msg("{\"movement\":\"finished\",\"axis\":\"z\"}");
+      } else {  // 3rd case: movement was ONLY on X-axis (X!=0 && Z==0)
+        Serial.print("\nMovement was only on X-axis, covered dist = ");
+        Serial.print(dist_X);
+        send_UDP_msg("{\"movement\":\"finished\",\"axis\":\"x\"}");
       }
     }
-    Udp.endPacket();
   }
-// ----------- END Send UDP response when movements are finished ------------
+// ----------- END Sending UDP response when movements are finished ------------
 
-// -------------- Send UDP msg when limit lensors reached -------------------
+// -------------- Sending UDP msg when limit lensors reached -------------------
   // X-axis: when reached Negative Limit sensor, send a message once
   if ((motor0.StatusReg().bit.InNegativeLimit == 1) && (X_NegLimitFlag == 0)) {
     X_NegLimitFlag = 1; // set flag to 1 to show X Neg. limit is reached 
     Serial.print("\nX-axis: Reached Negative Limit sensor");
-    send_UDP_msg("\nWARNING! Reached Negative Limit sensor on X-axis");      
+    send_UDP_msg("{\"status\":\"warning\",\"reachedSensor\":\"xNegative\"}");
   } else if ((motor0.StatusReg().bit.InNegativeLimit == 0) && (X_NegLimitFlag == 1)) {
     X_NegLimitFlag = 0; // set flag to 0 to show X Neg. limit is away
     Serial.print("\nX-axis: moved away from Negative Limit sensor");
@@ -199,7 +193,7 @@ void loop() {
   if ((motor0.StatusReg().bit.InPositiveLimit == 1) && (X_PosLimitFlag == 0)) {
     X_PosLimitFlag = 1; // set flag to 1 to show X Pos. limit is reached
     Serial.print("\nX-axis: Reached Positive Limit sensor");
-    send_UDP_msg("\nWARNING! Reached Positive Limit Sensor on X-axis");   
+    send_UDP_msg("{\"status\":\"warning\",\"reachedSensor\":\"xPositive\"}");
   } else if ((motor0.StatusReg().bit.InPositiveLimit == 0) && (X_PosLimitFlag == 1)) {
     X_PosLimitFlag = 0; // set flag to 0 to show X Pos. limit is away
     Serial.print("\nX-axis: moved away from Positive Limit Sensor");
@@ -208,7 +202,7 @@ void loop() {
   if ((motor1.StatusReg().bit.InNegativeLimit == 1) && (Z_NegLimitFlag == 0)) {
     Z_NegLimitFlag = 1; // set flag to 1 to show Z Neg. limit is reached
     Serial.print("\nZ-axis: Reached Negative Limit sensor");
-    send_UDP_msg("\nWARNING! Reached Negative Limit sensor on X-axis");
+    send_UDP_msg("{\"status\":\"warning\",\"reachedSensor\":\"zNegative\"}");
   } else if ((motor1.StatusReg().bit.InNegativeLimit == 0) && (Z_NegLimitFlag == 1)) {
     Z_NegLimitFlag = 0; // set flag to 0 to show Z Neg. limit is away
     Serial.print("\nZ-axis: moved away from Negative Limit Sensor");
@@ -217,20 +211,19 @@ void loop() {
   if ((motor1.StatusReg().bit.InPositiveLimit == 1) && (Z_PosLimitFlag == 0)) {
     Z_PosLimitFlag = 1; // set flag to 1 to show Z Pos. limit is reached
     Serial.print("\nZ-axis: Reached Positive Limit sensor");
-    send_UDP_msg("\nWARNING! Reached Positive Limit Sensor on Z-axis");
+    send_UDP_msg("{\"status\":\"warning\",\"reachedSensor\":\"zPositive\"}");
   } else if ((motor1.StatusReg().bit.InPositiveLimit == 0) && (Z_PosLimitFlag == 1)) {
     Z_PosLimitFlag = 0; // set flag to 0 to show Z Pos. limit is away
     Serial.print("\nZ-axis: moved away from Positive Limit Sensor");
   }
-// -------------- END Send UDP msg when Limit Sensors reached ---------------
-
+// -------------- END Sending UDP msg when Limit Sensors reached ---------------
   // look for a received packet
   int packetSize = Udp.parsePacket();
   if (packetSize > 0) {
-    Serial.print("\n\nNEW PACKET! Received packet of size ");
+    Serial.print("\nNEW PACKET! Received packet of size ");
     Serial.print(packetSize); 
     Serial.print(" bytes");
-    // print IP address 
+    // print IP address of received packet
     Serial.print("\nRemote IP address: ");
     IPAddress remote = Udp.remoteIP();
     for (int i = 0; i < 4; i++) { // loop to print IP address 
@@ -242,81 +235,87 @@ void loop() {
       }
     }
     Serial.print("  Remote port: ");
-    Serial.print(Udp.remotePort());
+    Serial.print(Udp.remotePort()); // print port number
     // read the packet
     int bytesRead = Udp.read(packetReceived, MAX_PACKET_LENGTH);
     Serial.print("\nPacket contents: "); // print contents of packet
-    Serial.write(packetReceived, bytesRead); // Serial.write(buf, len)
-    // parse received packet
-    if ( (0 < bytesRead) && (bytesRead < parser_buff_size) ) {  
-      // if packetReceived[0-5] equal to "E-STOP"
-      if (memcmp(&packetReceived[0], "E-STOP", 6) == 0) {
-        Serial.print("\nReceived UDP message: E-STOP");
-        send_UDP_msg("Received UDP message: E-STOP");
-      // if packetReceived[0-7] equal to "HOME:X,Z"
-      } else if (memcmp(&packetReceived[0], "HOME:X,Z", 8) == 0) {
-        Serial.print("\nReceived UDP message: HOME:X,Z");
-        send_UDP_msg("Received UDP message: HOME:X,Z");
-        Homing_Z_axis(); // first: move camera up to protect it
-        Homing_X_axis(); // second: move camera on X-axis
-      // if packetReceived[0-5] equal to "HOME:X"
-      } else if (memcmp(&packetReceived[0], "HOME:X", 6) == 0) {
-        Serial.print("\nReceived UDP message: HOME:X");
-        send_UDP_msg("Received UDP message: HOME:X");
-        Homing_X_axis(); // call Home:X function
-      // if packetReceived[0-5] equal to "HOME:Z"
-      } else if (memcmp(&packetReceived[0], "HOME:Z", 6) == 0) {
-        Serial.print("\nReceived UDP message: HOME:Z");
-        send_UDP_msg("Received UDP message: HOME:Z");
-        Homing_Z_axis(); // call Home:Z function
-      // if received move message: retrieve X distance
-      } else if ((packetReceived[0]=='X')&&(packetReceived[1]==':')) {
-        int t = 0; // counter for a position in temp char arr for X dist
-        char temp_str_X[MAX_DIST_LEN] = ""; // temp char array for X distance
-        // take one char until meet space (between "X:10" and "Z:10")
-        while ( (packetReceived[2 + t] != ' ')  &&  ( (packetReceived[2] == '-') || (isdigit(packetReceived[2 + t])) ) ) { 
-          // number 2 here is a shift for two chars 'X' and ':'
-          temp_str_X[t] = packetReceived[t + 2]; // copy char to temp arr
-          t++; // move to one position simultaneously in packet and temp arr 
-        }
-        temp_str_X[t] = '\0'; // terminate temp-string with '\0'
-        dist_X = atol(temp_str_X);//convert char to number, works for neg.numbr 
-        t = t + 3; // shift for 3 positions: for 'X', ':' and space ' '
-        // now t points to the next position after the space ' '
-        if ((packetReceived[t]=='Z') && (packetReceived[t+1]==':')) {
-          char temp_str_Z[MAX_DIST_LEN] = ""; // temp char array for Z distance
-          t = t + 2; // two steps: from 'Z' to ':', from ':' to first digit
-          int i = 0;
-          while (packetReceived[t] != '\0') { // go till the end of packet
-            if ((packetReceived[t] == '-') || (isdigit(packetReceived[t]))) {
-              temp_str_Z[i] = packetReceived[t];// copy char to tmp char arr Z
-            }
-            t++; // move pointer one position inside received packet
-            i++; // move pointer one position inside temp char array Z
-          }
-          temp_str_Z[i-1] = '\0'; // terminate temp char arr Z with '\0' 
-          dist_Z = atol(temp_str_Z);//convert char to number, works minus '-'
-        } 
-        Serial.print((String)"\nint value of dist_X: " + dist_X + ", int value of dist_Z: " + dist_Z);
-        // send back UDP message
-        send_UDP_msg("Received X:");
-        char dist_X_char[MAX_DIST_LEN]; 
-        itoa(dist_X, dist_X_char, MAX_DIST_LEN); // int to char convertion
-        send_UDP_msg(itoa(dist_X, dist_X_char, MAX_DIST_LEN));
-        send_UDP_msg(", Z:");
-        char dist_Z_char[MAX_DIST_LEN]; 
-        send_UDP_msg(itoa(dist_Z, dist_Z_char, MAX_DIST_LEN));
-        // call motors to move, pass them the distances
-        motor_0_MoveDistance(dist_X); // X-axis move function
-        motor_1_MoveDistance(dist_Z); // Z-axis move function
-      } else { // if received ungecognized packet
-        Serial.print("\nReceived message was not recognized");
-        send_UDP_msg("ERROR! Received message was not recognized.");
-      }
+    Serial.write(packetReceived, bytesRead); // Serial.write(buf_name, length)
+    // JSON processing
+    JsonDocument doc_output; // variable to store JSON deserialized document
+    // deserialize JSON (output, input)
+    DeserializationError des_error = deserializeJson(doc_output, packetReceived); 
+    if (des_error) {  // JSON Deserialization error handling
+      Serial.print(F("JSON deserializeJson() error: "));
+      Serial.print(des_error.c_str()); // print extra info about error from ArduinoJson lib. 
+    }
+    // if JSON x or z contain char command, do the command, if NOT, derive int distance(s)
+    const char *content_x = doc_output["x"]; // get X value as char arr
+    Serial.print("\n char value of x: ");
+    Serial.print(content_x);
+    const char *content_z = doc_output["z"]; // get Z value as char arr
+    Serial.print("\n char value of z: ");
+    Serial.print(content_z);
+
+    // when JSON "x" contains text then int dist_X is empty (zero) and viceversa
+    dist_X = doc_output["x"]; // get x value as int distance
+    Serial.print("\n int value of x: ");
+    Serial.print(dist_X);
+    dist_Z = doc_output["z"]; // get z value as int distance
+    Serial.print("\n int value of z: ");
+    Serial.print(dist_Z);
+    byte m = 0; // flag
+    if (memcmp(&content_z[0], "home", 4) == 0) {
+      Serial.print("\n Z-axis homing"); 
+      JsonDocument doc; // create new JsonDocument 
+      doc["status"] = "received"; // add member to JSON document
+      doc["z"] = "home"; // add member to JSON document
+      char output[64]; // create C-string for storing new JSON doc
+      serializeJson(doc, output); // conversion to JSON
+      send_UDP_msg(output); // send constructed C-string via UDP
+      m = 1;
+      Homing_Z_axis(); // call homing Z axis function
+    } else if (dist_Z != 0) { // when received non-zero distance Z
+      Serial.print("\n Z-axis moving, distance = "); 
+      Serial.print(dist_Z); 
+      JsonDocument doc; // create new JsonDocument for sending UDP msg
+      doc["status"] = "received"; // add member to JSON document
+      doc["z"] = dist_Z; // add member to JSON document
+      char output[64]; // create C-string for storing new JSON doc
+      serializeJson(doc, output); // conversion to JSON
+      send_UDP_msg(output); // send constructed C-string via UDP 
+      m = 1;
+      motor_1_MoveDistance(dist_Z); // call Z-axis move function
     } 
+    if (memcmp(&content_x[0], "home", 4) == 0) {
+      Serial.print("\n X-axis homing"); 
+      JsonDocument doc; // create new JsonDocument 
+      doc["status"] = "received"; // add member to JSON document
+      doc["x"] = "home"; // add member to JSON document
+      char output[64]; // create C-string for storing new JSON doc
+      serializeJson(doc, output); // conversion to JSON
+      send_UDP_msg(output); // send JSON responce
+      m = 1;
+      Homing_X_axis(); // call homing Z axis function
+    } else if (dist_X != 0) { // when received non-zero distance X 
+      Serial.print("\n X-axis moving, distance = "); 
+      Serial.print(dist_X); 
+      JsonDocument doc; // create new JsonDocument for sending UDP msg 
+      doc["status"] = "received"; // add member to JSON document
+      doc["x"] = dist_X; // add member to JSON document
+      char output[64]; // create C-string for storing new JSON doc
+      serializeJson(doc, output); // conversion to JSON
+      send_UDP_msg(output); // send via UDP constructed C-string
+      m = 1;
+      motor_0_MoveDistance(dist_X); // call X-axis move function
+    } 
+    if (m == 0) { // if received message is ungecognized
+      Serial.print("\nReceived incorrect UDP message");
+      send_UDP_msg("{\"error\":\"received incorrect UDP message\"}");
+    }
+    m = 0;
   } 
-  delay(10); // set ClearCore cycle delay, in ms 
-} 
+  delay(10); // set ClearCore cycle delay, ms 
+} // end of loop() 
 //--------------------------- Motor 0 Beginning ------------------------------- 
 bool motor_0_MoveDistance(int distance) { // Moving X-axis motor
 // check if a motor0 alert is currently preventing motion
@@ -465,7 +464,7 @@ void motor_1_HandleAlerts() {
 }
 //--------------------------- Motor 1 End --------------------------------------
 
-// allows sending UDP messages in one line
+// function for sending UDP messages in one line
 void send_UDP_msg(char msg[]) {
     Udp.beginPacket(Udp.remoteIP(), Udp.remotePort());
     Udp.write(msg);
@@ -490,11 +489,11 @@ void Homing_X_axis() {
     }
     delay(1); // need this delay to keep normal distance Sensor - Home pos.
   } 
-  X_HomingDoneFlag = 0; //set Flag to be ready for the next call Homing X  
-  dist_X = 0; // set X covered distance to 0
-  delay(400); // For correct work of ClearCore. 350 ms works, set 400 ms
+  X_HomingDoneFlag = 0; //set Flag to 0 to be ready for next call Homing X  
+  dist_X = 0; // when homing is done set X covered distance to 0
+  delay(400); // for correct work of ClearCore. 350 ms works, set 400 ms
   Serial.print("\nX-axis: Homing is done");
-  send_UDP_msg("\nX-axis Homing is finished"); // UDP msg: X homing finished
+  send_UDP_msg("{\"status\":\"finished\",\"x\":\"home\"}"); // send msg: Z homing finished
 } 
 
 void Homing_Z_axis() {
@@ -514,11 +513,11 @@ void Homing_Z_axis() {
     }
     delay(1); // need this delay to keep normal distance Sensor - Home pos.
   } 
-  Z_HomingDoneFlag = 0; //set Flag to be ready for the next call Homing Z  
-  dist_Z = 0; // set Z covered distance to 0
-  delay(400); // For correct work of ClearCore. 350 ms works, set 400 ms
+  Z_HomingDoneFlag = 0; //set Flag to 0 to be ready for next call Homing Z  
+  dist_Z = 0; // when homing is done set Z covered distance to 0 
+  delay(400); // for ClearCore's correct work. 350 ms works, set 400 ms
   Serial.print("\nZ-axis: Homing is done");
-  send_UDP_msg("\nZ-axis Homing is finished"); // UDP msg: Z homing finished
+  send_UDP_msg("{\"status\":\"finished\",\"z\":\"home\"}"); // send msg: Z homing finished
 } 
 
 
